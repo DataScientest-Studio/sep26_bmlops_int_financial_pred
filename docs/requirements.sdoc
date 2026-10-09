@@ -1,0 +1,412 @@
+[DOCUMENT]
+TITLE: Financial forecasting service — requirements
+
+[GRAMMAR]
+ELEMENTS:
+- TAG: TEXT
+  FIELDS:
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+- TAG: REQUIREMENT
+  FIELDS:
+  - TITLE: UID
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATUS
+    TYPE: String
+    REQUIRED: True
+  - TITLE: TAGS
+    TYPE: Tag
+    REQUIRED: False
+  - TITLE: VERIFICATION
+    TYPE: SingleChoice(Test, Demonstration, Inspection)
+    REQUIRED: True
+  - TITLE: TITLE
+    TYPE: String
+    REQUIRED: True
+  - TITLE: STATEMENT
+    TYPE: String
+    REQUIRED: True
+  - TITLE: RATIONALE
+    TYPE: String
+    REQUIRED: False
+
+[[SECTION]]
+TITLE: Objectives
+
+[TEXT]
+STATEMENT: >>>
+1. Forecast the next trading day's price change of a configured security and offer the forecast through an API and an interactive app.
+2. Keep the forecast current without manual steps: new quotes arrive, the model is retrained, a better model replaces the current one, and the running system is monitored for data drift and service health.
+3. Compare every model honestly against simple baselines and state clearly that the service is not investment advice.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Key metrics
+
+[TEXT]
+STATEMENT: >>>
+Model quality, measured on data the model has not seen, ordered by time:
+
+- Mean absolute error (MAE) of the predicted daily change.
+- Skill against persistence: 1 − MAE(model) / MAE(persistence). Above 0 means the model beats "tomorrow's price equals today's" (predicted change 0); 0 or below is the expected result for daily prices and is reported as such.
+- Directional accuracy: share of days on which the predicted sign of the change is correct.
+
+Operation of the running system:
+
+- Prediction latency (95th percentile) and error rate of the API.
+- Data freshness: trading days between the latest stored quote and the latest available quote.
+- Drift share: fraction of monitored features flagged as drifted in the latest check.
+- Training runs: duration and outcome (succeeded, promoted, kept as candidate).
+
+Threshold values for alerts, drift and model promotion are configuration, set by the team.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: How requirements are checked
+
+[TEXT]
+STATEMENT: >>>
+Each requirement names how it is checked (VERIFICATION):
+
+- Test: an automated black-box test calls the system through its public interfaces (API, commands, database) and names the requirement it checks.
+- Demonstration: shown on the running system, because it depends on time passing or on a dashboard.
+- Inspection: checked by review of the repository and its configuration; this covers the constraints set by the course.
+
+Design choices and the schedule are not requirements; they are recorded in the plan and the decision documents.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Data
+
+[REQUIREMENT]
+UID: REQ-DAT-001
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Historical load
+STATEMENT: >>>
+The system loads the complete daily price history (open, high, low, close, volume) of each configured security into its database in a single run.
+<<<
+
+[REQUIREMENT]
+UID: REQ-DAT-002
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: Daily ingestion
+STATEMENT: >>>
+The system adds the quotes of each new trading day to its database.
+<<<
+
+[REQUIREMENT]
+UID: REQ-DAT-003
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: Historical replay
+STATEMENT: >>>
+The system can replay stored history one trading day at a time, as if each day were arriving live, at a speed set by the operator.
+<<<
+RATIONALE: >>>
+Shows the complete loop of ingestion, drift check, retraining and promotion within minutes instead of weeks.
+<<<
+
+[REQUIREMENT]
+UID: REQ-DAT-004
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Trading calendar
+STATEMENT: >>>
+The system counts only trading days of the security's exchange; weekends, public holidays and trading suspensions are not treated as missing data.
+<<<
+
+[REQUIREMENT]
+UID: REQ-DAT-005
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Quote validation
+STATEMENT: >>>
+The system rejects a quote with a missing field, a non-positive price or a duplicate trading day before it is stored, and records the rejection.
+<<<
+
+[REQUIREMENT]
+UID: REQ-DAT-006
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: Dataset versioning
+STATEMENT: >>>
+Every dataset used for training has a version identifier, and every trained model records the identifier of the dataset it was trained on.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Model
+
+[REQUIREMENT]
+UID: REQ-MOD-001
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Forecast target
+STATEMENT: >>>
+The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MOD-002
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Baselines
+STATEMENT: >>>
+Every evaluation also scores two baselines on the same data: persistence (tomorrow's price equals today's, i.e. a predicted change of 0) and the historical mean change.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MOD-003
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: No look-ahead
+STATEMENT: >>>
+Features for a predicted day use only data dated before that day, and evaluation data is always later in time than training data.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MOD-004
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: Experiment tracking
+STATEMENT: >>>
+Every training run records its parameters, metrics, dataset version and resulting model.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MOD-005
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: Model promotion
+STATEMENT: >>>
+A newly trained model becomes the production model only if it scores better than the current production model on the same evaluation window; otherwise the current production model stays in place.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Service
+
+[REQUIREMENT]
+UID: REQ-SVC-001
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Prediction endpoint
+STATEMENT: >>>
+The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it.
+<<<
+
+[REQUIREMENT]
+UID: REQ-SVC-002
+STATUS: Draft
+TAGS: phase-1
+VERIFICATION: Test
+TITLE: Training endpoint
+STATEMENT: >>>
+The API starts a training run on request and reports its outcome.
+<<<
+
+[REQUIREMENT]
+UID: REQ-SVC-003
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Prediction log
+STATEMENT: >>>
+The system stores every prediction with its input features, model version and time of request.
+<<<
+
+[REQUIREMENT]
+UID: REQ-SVC-004
+STATUS: Draft
+TAGS: phase-2, optional
+VERIFICATION: Test
+TITLE: Access control
+STATEMENT: >>>
+The API answers only authenticated callers; starting a training and managing users are reserved for administrators.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Automation
+
+[REQUIREMENT]
+UID: REQ-AUT-001
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Demonstration
+TITLE: Scheduled training pipeline
+STATEMENT: >>>
+On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps.
+<<<
+
+[REQUIREMENT]
+UID: REQ-AUT-002
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Outcome collection
+STATEMENT: >>>
+Once a predicted day's actual quote is stored, the system records it against each prediction for that day and computes the production error.
+<<<
+
+[REQUIREMENT]
+UID: REQ-AUT-003
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: One-command start
+STATEMENT: >>>
+The complete system starts with one command from a fresh clone of the repository, each component running as a separate service.
+<<<
+
+[REQUIREMENT]
+UID: REQ-AUT-004
+STATUS: Draft
+TAGS: phase-2, optional
+VERIFICATION: Inspection
+TITLE: Continuous integration
+STATEMENT: >>>
+Every push runs linting and unit tests and builds the service images; a push to the main branch also publishes the images.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Monitoring
+
+[REQUIREMENT]
+UID: REQ-MON-001
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Training data drift
+STATEMENT: >>>
+Before training, the system compares recent data with historical reference data, records the drift report and metrics with the training run, and retrains when drift exceeds the configured threshold.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MON-002
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Prediction input drift
+STATEMENT: >>>
+On a configured schedule, the system compares logged prediction inputs with reference data, records the drift report and metrics, and starts the training pipeline when drift exceeds the configured threshold.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MON-003
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Demonstration
+TITLE: Service metrics and dashboard
+STATEMENT: >>>
+The system collects request count, latency and error rate of the API and shows them, together with data freshness and the latest drift share, on a dashboard.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MON-004
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Alerts
+STATEMENT: >>>
+The system raises an alert when a monitored metric crosses its configured threshold; a configured alert starts the training pipeline.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: App
+
+[REQUIREMENT]
+UID: REQ-APP-001
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Forecast view
+STATEMENT: >>>
+The app lets a user choose a security and shows its recent price history, the model's forecast for the next trading day and the baseline forecasts.
+<<<
+
+[REQUIREMENT]
+UID: REQ-APP-002
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Not investment advice
+STATEMENT: >>>
+Every page of the app states that the forecasts are not investment advice.
+<<<
+
+[REQUIREMENT]
+UID: REQ-APP-003
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Model results
+STATEMENT: >>>
+The app shows the key model metrics of the production model next to those of the baselines.
+<<<
+
+[[/SECTION]]
+
+[[SECTION]]
+TITLE: Course constraints
+
+[REQUIREMENT]
+UID: REQ-CON-001
+STATUS: Draft
+TAGS: course
+VERIFICATION: Inspection
+TITLE: Prescribed tools
+STATEMENT: >>>
+The system uses the tools the course prescribes: MLflow for experiment tracking and the model registry, DVC without Git for dataset versions (hashes recorded in MLflow), Docker Compose for the services, Airflow for scheduled pipelines and drift checks, Evidently for drift reports, Prometheus and Grafana for service monitoring and alerts, Streamlit for the app, and an SQL or NoSQL database.
+<<<
+
+[REQUIREMENT]
+UID: REQ-CON-002
+STATUS: Draft
+TAGS: course
+VERIFICATION: Inspection
+TITLE: Local operation
+STATEMENT: >>>
+The complete system, including its database, runs on a local machine without any cloud service.
+<<<
+
+[REQUIREMENT]
+UID: REQ-CON-003
+STATUS: Draft
+TAGS: course
+VERIFICATION: Inspection
+TITLE: Database as the data store
+STATEMENT: >>>
+The system keeps all the data it uses in its database; files fetched from a data source are only read into the database, never used as storage.
+<<<
+
+[[/SECTION]]

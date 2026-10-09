@@ -1,0 +1,10 @@
+# Securities the system loads, trains and forecasts; the list is for the team to agree.
+# symbol: ticker as the data source names it; exchange: MIC of its exchange.
+
+[[securities]]
+symbol = "AAPL"
+exchange = "XNAS"
+
+[[securities]]
+symbol = "SAP"
+exchange = "XETR"
