@@ -1,6 +1,7 @@
 """Request and response bodies of the API."""
 
 from datetime import date
+from typing import Annotated
 
 from pydantic import BaseModel, Field
 
@@ -8,15 +9,17 @@ from pydantic import BaseModel, Field
 class SecurityRequest(BaseModel):
     """Names the security a request is about."""
 
-    symbol: str = Field(min_length=1, max_length=20, examples=["AAPL"])
+    symbol: Annotated[str, Field(min_length=1, max_length=20, examples=["AAPL"])]
 
 
 class ForecastResponse(BaseModel):
     """Forecast of the next trading day's change."""
 
     symbol: str
-    day: date = Field(description="Trading day the forecast is for.")
-    change: float = Field(description="Predicted relative close-to-close change.")
+    day: Annotated[date, Field(description="Trading day the forecast is for.")]
+    change: Annotated[
+        float, Field(description="Predicted relative close-to-close change.")
+    ]
     model_version: str
 
 
