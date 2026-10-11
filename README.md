@@ -21,8 +21,12 @@ Planning. The service is not built yet.
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
-│   └── init/
-│       └── prices.sql           creates the prices table on the database's first start
+│   ├── init/
+│   │   └── prices.sql           creates the prices table on the database's first start
+│   └── queries/
+│       ├── examples.sql         example queries on the prices table
+│       ├── sample-data.sql      made-up prices for trying them
+│       └── remove-sample-data.sql  removes the made-up prices again
 ├── docs/
 │   ├── requirements.sdoc        requirements source (StrictDoc)
 │   ├── requirements.md          readable version, generated
@@ -82,6 +86,28 @@ make db                   # starts PostgreSQL, waits until it is ready
 | `make test` | unit and integration tests (needs `make db`) |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
 | `make api` | API on http://localhost:8000, documentation at `/docs` |
+
+`make db-shell` opens an SQL prompt (`\q` leaves it). For example, the latest day stored per security:
+
+```sql
+SELECT symbol, max(day) AS latest_day, count(*) AS days
+FROM prices
+GROUP BY symbol;
+```
+
+More examples are in `db/queries/examples.sql`. Run a file with:
+
+```bash
+docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < db/queries/examples.sql
+```
+
+To try the examples before real prices are loaded, run `db/queries/sample-data.sql` the same way. It adds made-up prices under the symbols `AAPL.SAMPLE` and `SAP.SAMPLE`; the suffix keeps them apart from real prices, which are stored as `AAPL` and `SAP`. `db/queries/remove-sample-data.sql` removes them again:
+
+```sql
+DELETE FROM prices WHERE symbol LIKE '%.SAMPLE';
+```
+
+`LIKE '%.SAMPLE'` matches every symbol that ends in `.SAMPLE` (`%` stands for any text), so real prices are never deleted.
 
 ## Documents
 | Document | Content |
