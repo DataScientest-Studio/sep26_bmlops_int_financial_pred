@@ -16,3 +16,6 @@ __pycache__/
 *$py.class
 .pytest_cache/
 .ruff_cache/
+
+# Documents are kept as Markdown; PDF exports stay local
+*.pdf
