@@ -71,7 +71,7 @@ Planning. The service is not built yet.
 Needs [uv](https://docs.astral.sh/uv/), `make` and Docker with Compose. From a fresh clone:
 
 ```bash
-cp .env.example .env      # then set your own password in .env
+cp .env.example .env      # then set your own password and your own free EODHD key in .env
 make setup                # Python environment in .venv/
 make db                   # starts PostgreSQL, waits until it is ready
 ```

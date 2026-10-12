@@ -20,5 +20,5 @@ __pycache__/
 # Documents are kept as Markdown; PDF exports stay local
 *.pdf
 
-# Exported price data is shared privately, never committed
+# Price data stays private, never committed
 *.csv
