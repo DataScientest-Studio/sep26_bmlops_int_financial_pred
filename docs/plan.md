@@ -34,10 +34,12 @@ requirements first. Each requirement names how it is checked: Test, Demonstratio
 every push runs the style check and the unit tests on GitHub (`.github/workflows/ci.yaml`, the same `make lint` and `make test` as on our machines); a failed run emails the person who pushed. `main` in the course repo refuses deletion and force pushes; once code review starts, changes reach it only through a pull request with green checks (see "Code review" in Open). Nightly runs: later, if needed.
 
 ### Data source
-EODHD, free tier: 20 calls per day and 1 year of history; each request costs one call per security. Prices, splits and dividends all come from EODHD. Each member signs up for their own free key and keeps it in their own `.env` (`EODHD_API_KEY`). `make load` fills a new database as far back as the plan allows; `make update` adds the trading days since the last stored one. How the daily calls are spent: "Daily call budget" in Open.
+EODHD, free tier: 20 calls per day and 1 year of history; each request costs one call per security. Prices, splits and dividends all come from EODHD; daily prices cover exchanges worldwide, market indices included. On the free tier, splits and dividends are switched on only on request: each member asks EODHD support once for their key. Each member signs up for their own free key and keeps it in their own `.env` (`EODHD_API_KEY`). `make load` fills a new database as far back as the plan allows; `make update` adds the trading days since the last stored one. How the daily calls are spent: "Daily call budget" in Open.
+
+EODHD's daily prices include the current day while its session is still running (delayed by about 15 minutes), in the same form as a finished day. How such a row is handled: "Provisional closes" in "Decision proposals".
 
 ### Close prices
-the database stores prices as they printed — open, high, low, close and volume as traded that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as events in tables of their own; the model's inputs correct prices and volumes for them when the inputs are built. EODHD delivers volume already corrected for splits up to the day of the request; the load reverses that with the split ratios it fetches in the same run (each day's volume divided by the ratios of all later splits). To check while building: EODHD corrects volume with exactly the splits its splits API lists (test case: Apple's 4:1 split on 2020-08-31).
+the database stores prices as they printed — open, high, low, close and volume as traded that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as events in tables of their own; the model's inputs correct prices and volumes for them when the inputs are built. EODHD delivers volume already corrected for splits up to the day of the request; the load reverses that with the split ratios it fetches in the same run (each day's volume divided by the ratios of all later splits). EODHD keeps closes as printed and multiplies the volume before a split by its ratio; the splits API delivers each ratio as text, for example `4.000000/1.000000`.
 
 ## Decision proposals
 To be decided by the team.
@@ -63,6 +65,29 @@ To be decided by the team.
   - Streamlit (proposed): pure Python, as in the course material and past group projects; quick to build, with charts included.
   - Small web app (an HTML page served by FastAPI): no extra framework; layout and charts are written by hand.
   - Gradio: as quick as Streamlit, but aimed at a single model demo; weaker for pages with price history and model metrics.
+- Reference securities: six stocks that behave differently, plus two market indices as reference series (`config/securities.toml`). The indices are loaded like the stocks but never trained or forecast; whether the model uses their recent changes as inputs is part of "First model". Each request covers one symbol and one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs three calls per stock (prices, splits, dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily limit. A daily update costs the same when events are checked every day, 8 when only prices are fetched; a fetch during a running session does not fit beside a full daily update (see "Daily call budget" in Open).
+
+  | Security | Exchange | Why |
+  |---|---|---|
+  | Apple (AAPL) | XNAS | very large technology company, medium volatility |
+  | Tesla (TSLA) | XNAS | high volatility: does the model beat "no change" on noisy prices? |
+  | JPMorgan Chase (JPM) | XNYS | bank, reacts to interest rates |
+  | Exxon Mobil (XOM) | XNYS | energy, follows oil prices rather than technology |
+  | Coca-Cola (KO) | XNYS | defensive, low volatility |
+  | SAP (SAP) | XETR | second exchange with its own holidays, prices in euro |
+  | S&P 500 index | XNYS | market trend of the US stocks |
+  | DAX index | XETR | market trend of the German stock |
+
+  Alternatives:
+  - Six stocks and two indices (proposed): covers different volatility levels, sectors and two exchange calendars; the market trend is available to the model; the first load uses the whole daily limit.
+  - Four stocks and two indices: 14 calls per full load or update, leaving 6 for a fetch during the session; fewer kinds of behaviour.
+  - Six stocks, no indices: no market trend for the model; two calls fewer per day.
+  - Exchange-traded funds instead of indices (SPY for the S&P 500, EXS1 for the DAX): traded like stocks, but they pay dividends, so each costs three calls on the first load.
+- Provisional closes: during a running session the latest price stands in for the close. Each stored row carries the time it was fetched; a row is final once it was fetched a set delay after its exchange's close (trading calendar, early closes included; the delay covers EODHD's 15 minutes and the closing auction, for example 20 minutes, and is a setting). A later fetch replaces a provisional row and never a final one. Training uses final rows only; a forecast may start from a provisional close and then says so: the response gives the close it starts from and when that price was fetched. `make update` runs once a day at any time; a run during a session stores that day as provisional, and the next day's run replaces it with the final close.
+  Alternatives:
+  - Provisional rows with fetch time, replaced until final (proposed): a forecast is available during the session and the stored close is corrected by the next run; one more column and an update rule instead of insert-only.
+  - Store only finished sessions (rows of a running session are dropped): simplest, insert-only; forecasts only after the close.
+  - Store EODHD's rows as delivered: a price from mid-session stays in the database as the close, because a stored day is never replaced.
 
 ## Roadmap — proposal
 To be agreed by the team. Team setup and areas: `docs/team.md`.
@@ -106,7 +131,7 @@ Repo sharing (item 1): every member works with their own GitHub account; access 
 - "Changes only through reviewed pull requests" is enforced by a ruleset on `main`; GitHub enforces it because the course repo is public.
 
 Interfaces to agree at the meeting, so items 3–6 can be built in parallel:
-- Table: `prices(symbol, day, open, high, low, close, volume)`, primary key (symbol, day).
+- Table: `prices(symbol, day, open, high, low, close, volume, fetched_at)`, primary key (symbol, day); `fetched_at` is the time the row was fetched (UTC), see "Provisional closes".
 - Tables: `splits(symbol, day, ratio)` and `dividends(symbol, day, amount, currency)`, primary key (symbol, day) each.
 - Functions: `train() -> model_version`, `predict(symbol) -> forecast`.
 - API: request and response of `training/` and `predict/`.
@@ -119,7 +144,7 @@ In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see "R
 - Roadmap: proposal in "Roadmap — proposal", to be agreed by the team before building (coach). Input still to review: the coach's previous group repos (`references/README.md`, past learner projects).
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings, communication, work tracking, reviews), to be agreed by the team.
 - Local operation or a live cloud database (REQ-CON-002): decided by the team once the foundation runs (load, training, prediction, API). Every member's pipeline needs an up-to-date database during development. Options: each member runs their own database and loads from the data source; a shared development database on a team member's NAS, reached over Tailscale; a live database on a small rented cloud server (for example, AWS). REQ-CON-002 (no cloud service) changes if the team chooses a cloud database.
-- Daily call budget (phase 2, daily ingestion): one setting per member and key, the calls per day the EODHD plan allows (`calls_per_day`, 20 on the free plan). Proposal: each day the prices come first, one call per security; the calls left check splits and dividends, the securities checked longest ago first, so the rhythm follows the number of securities (6 securities on the free plan: daily; 16: about every 8 days). Calls used are counted in the database across runs and reset at 00:00 UTC, when EODHD's day turns; a spent budget stops requests until then, and the run reports what it left out; more securities than calls per day is refused at start. Alternative: a fixed "check events every N days" setting beside the budget — simpler, but re-tuned by hand whenever the securities change, and nothing stops a combination that exceeds the budget. Either way, a split noticed late leaves the newest model input wrong until it is fetched.
+- Daily call budget (phase 2, daily ingestion): one setting per member and key, the calls per day the EODHD plan allows (`calls_per_day`, 20 on the free plan). Proposal: each day the prices come first, one call per security; the calls left check splits and dividends, the securities checked longest ago first, so the rhythm follows the number of securities (6 securities on the free plan: daily; 16: about every 8 days). Market indices take one price call each and have no events; every fetch during a running session (see "Provisional closes") costs one more price call per security and index. Calls used are counted in the database across runs and reset at 00:00 UTC, when EODHD's day turns; a spent budget stops requests until then, and the run reports what it left out; more securities than calls per day is refused at start. Alternative: a fixed "check events every N days" setting beside the budget — simpler, but re-tuned by hand whenever the securities change, and nothing stops a combination that exceeds the budget. Either way, a split noticed late leaves the newest model input wrong until it is fetched.
 - Objectives and key metrics: draft in `docs/requirements.sdoc`, to be confirmed by the team; main metric and the "better model" rule still to be defined.
 - Training and prediction code: one file or two (the coach accepts either). Proposal: separate modules for training, prediction and evaluation (`src/forecasting/`), as in the course scaffold and the past group projects.
 - Code review: GitHub pull requests, once the foundation is built; until then changes go straight to `main`. How strict (one approval required, or the author merges after green checks) and the reviewer ring (`docs/team.md`) are decided then.

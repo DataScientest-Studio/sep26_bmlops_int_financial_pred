@@ -44,7 +44,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The system loads the complete daily price history (open, high, low, close, volume) of each configured security into its database in a single run.
+**Statement**: The system loads the complete daily price history (open, high, low, close, volume) of each configured security and market index into its database in a single run.
 
 ### Daily ingestion
 
@@ -82,7 +82,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The system rejects a quote with a missing field, a non-positive price or a duplicate trading day before it is stored, and records the rejection.
+**Statement**: The system rejects a quote with a missing field, a non-positive price or a trading day delivered twice in one delivery before it is stored, and records the rejection.
 
 ### Dataset versioning
 
@@ -93,6 +93,17 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 **Statement**: Every dataset used for training has a version identifier, and every trained model records the identifier of the dataset it was trained on.
 
+### Provisional closes
+
+**UID**: REQ-DAT-007 \
+**Status**: Draft \
+**Tags**: phase-1 \
+**VERIFICATION**: Test
+
+**Statement**: The system stores each quote with the time it was fetched. A quote fetched before a set delay after its exchange's close of that trading day is provisional and is replaced by a later fetch of the same day; a quote fetched after that is final and is never replaced.
+
+**Rationale**: The data source delivers the current day while its session is still running, in the same form as a finished day.
+
 ## Model
 
 ### Forecast target
@@ -102,7 +113,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day.
+**Statement**: The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day. It is trained on final closes only.
 
 ### Baselines
 
@@ -149,7 +160,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it.
+**Statement**: The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched.
 
 ### Training endpoint
 

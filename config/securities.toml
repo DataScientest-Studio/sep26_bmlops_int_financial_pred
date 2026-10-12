@@ -2,9 +2,36 @@
 # symbol: ticker as the data source names it; exchange: MIC of its exchange.
 
 [[securities]]
-symbol = "AAPL"
+symbol = "AAPL.US"
 exchange = "XNAS"
 
 [[securities]]
-symbol = "SAP"
+symbol = "TSLA.US"
+exchange = "XNAS"
+
+[[securities]]
+symbol = "JPM.US"
+exchange = "XNYS"
+
+[[securities]]
+symbol = "XOM.US"
+exchange = "XNYS"
+
+[[securities]]
+symbol = "KO.US"
+exchange = "XNYS"
+
+[[securities]]
+symbol = "SAP.XETRA"
+exchange = "XETR"
+
+# Market indices: loaded like the securities as reference series, never trained or
+# forecast. exchange: MIC whose trading calendar and close the index follows.
+
+[[indices]]
+symbol = "GSPC.INDX"
+exchange = "XNYS"
+
+[[indices]]
+symbol = "GDAXI.INDX"
 exchange = "XETR"
