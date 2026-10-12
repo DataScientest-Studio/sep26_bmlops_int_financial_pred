@@ -386,7 +386,7 @@ TAGS: course
 VERIFICATION: Inspection
 TITLE: Prescribed tools
 STATEMENT: >>>
-The system uses the tools the course prescribes: MLflow for experiment tracking and the model registry, DVC without Git for dataset versions (hashes recorded in MLflow), Docker Compose for the services, Airflow for scheduled pipelines and drift checks, Evidently for drift reports, Prometheus and Grafana for service monitoring and alerts, Streamlit for the app, and an SQL or NoSQL database.
+The system uses the tools the course prescribes: MLflow for experiment tracking and the model registry, DVC without Git for dataset versions (hashes recorded in MLflow), Docker Compose for the services, Airflow for scheduled pipelines and drift checks, Evidently for drift reports, Prometheus and Grafana for service monitoring and alerts, and an SQL or NoSQL database.
 <<<
 
 [REQUIREMENT]

@@ -32,7 +32,7 @@ Planning. The service is not built yet.
 ├── docs/
 │   ├── requirements.sdoc        requirements source (StrictDoc)
 │   ├── requirements.md          readable version, generated
-│   ├── plan.md                  decision proposals, roadmap, phase plan, open points
+│   ├── plan.md                  decisions, decision proposals, roadmap, phase plan, open points
 │   ├── dependencies.md          every Python package and what it does
 │   ├── team.md                  team setup: areas, meetings, communication, work tracking
 │   └── decisions/
@@ -116,7 +116,7 @@ DELETE FROM prices WHERE symbol LIKE '%.SAMPLE';
 | Document | Content |
 |---|---|
 | [docs/requirements.md](docs/requirements.md) | Objectives, key metrics and requirements (generated from `docs/requirements.sdoc`) |
-| [docs/plan.md](docs/plan.md) | Decision proposals, roadmap, phase plan, open points |
+| [docs/plan.md](docs/plan.md) | Decisions, decision proposals, roadmap, phase plan, open points |
 | [docs/team.md](docs/team.md) | Team setup: areas, meetings, communication, work tracking |
 | [docs/dependencies.md](docs/dependencies.md) | Every Python package and what it does |
 | [docs/decisions/](docs/decisions/) | One file per team decision: options and reasons |

@@ -1,6 +1,6 @@
 # Database choice — PostgreSQL or NoSQL
 
-Preparation for a team decision. The course allows either ("a SQL or NoSQL DB", `references/architecture.md`); its reference pipeline chart shows PostgreSQL.
+Decision: PostgreSQL, confirmed by the coach (as presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST); listed in [`plan.md`, "Decisions"](../plan.md#decisions)). The course allows either ("a SQL or NoSQL DB", `references/architecture.md`); its reference pipeline chart shows PostgreSQL.
 
 ## What the database has to hold
 - **Prices:** per security and trading day: open, high, low, close, volume. Fixed columns, one row per (security, day). Size: 30 securities × 25 years × ~252 trading days ≈ 190,000 rows — small.
@@ -46,5 +46,5 @@ Cons:
 ## Note on SQLite
 SQLite is probably not a good option: it is a single file without a server, while we want one server to serve several databases (project data, MLflow, Airflow) to several services at once. Concurrent writers to one SQLite file wait on each other's lock, and Airflow does not support SQLite outside development.
 
-## Proposal
+## Decision
 PostgreSQL, one container, with separate databases for the project data, MLflow and Airflow. Prices as a table keyed by (security, day); predictions as a table with the features in a `jsonb` column; actual outcomes joined by security and day.

@@ -1,6 +1,6 @@
 # Password hashing — bcrypt or passlib
 
-Preparation for a team decision. Part of the proposal "API access" in `../plan.md`: users and their roles live in a `users` table, and the API checks each request's user name and password against it.
+Decision: the bcrypt package, called directly (as presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST); listed in [`plan.md`, "Decisions"](../plan.md#decisions)). Part of the decision "API access": users and their roles live in a `users` table, and the API checks each request's user name and password against it.
 
 ## What it has to do
 - Store only a hash of each password, never the password itself, so a copy of the database does not reveal anyone's password.
@@ -39,5 +39,5 @@ Cons:
 - Werkzeug's `generate_password_hash` (the Flask exercise): pulls a Flask library into a FastAPI project.
 - Plain-text passwords (the FastAPI exam): not acceptable outside an exercise.
 
-## Proposal
+## Decision
 The bcrypt package, called directly: `hashpw` when a user is added, `checkpw` on each request. Maintained, two functions, independent of the Python version, and the hash format the course taught. passlib is left out because it is unmaintained and fails with current bcrypt releases. Argon2id is the option to switch to if the team wants the strongest algorithm; the users table stays the same, only the stored hashes change.

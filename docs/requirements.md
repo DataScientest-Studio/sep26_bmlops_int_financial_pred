@@ -292,7 +292,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: course \
 **VERIFICATION**: Inspection
 
-**Statement**: The system uses the tools the course prescribes: MLflow for experiment tracking and the model registry, DVC without Git for dataset versions (hashes recorded in MLflow), Docker Compose for the services, Airflow for scheduled pipelines and drift checks, Evidently for drift reports, Prometheus and Grafana for service monitoring and alerts, Streamlit for the app, and an SQL or NoSQL database.
+**Statement**: The system uses the tools the course prescribes: MLflow for experiment tracking and the model registry, DVC without Git for dataset versions (hashes recorded in MLflow), Docker Compose for the services, Airflow for scheduled pipelines and drift checks, Evidently for drift reports, Prometheus and Grafana for service monitoring and alerts, and an SQL or NoSQL database.
 
 ### Local operation
 

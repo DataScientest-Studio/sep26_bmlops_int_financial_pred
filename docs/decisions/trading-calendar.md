@@ -1,6 +1,6 @@
 # Trading calendar — how the system knows trading days
 
-Preparation for a team decision. Requirement "Trading calendar" (REQ-DAT-004): only trading days of the security's exchange count; weekends, public holidays and trading suspensions are not missing data.
+Decision: the exchange_calendars package (as presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST); listed in [`plan.md`, "Decisions"](../plan.md#decisions)). Requirement "Trading calendar" (REQ-DAT-004): only trading days of the security's exchange count; weekends, public holidays and trading suspensions are not missing data.
 
 ## What the calendar has to answer
 - Is a given date a trading day on this exchange? (Load and validation: a missing quote on a trading day is a gap; on a holiday it is not.)
@@ -30,5 +30,5 @@ A day with quotes is a trading day; a day without is not.
 - Pros: simple to understand.
 - Cons: public holidays are not exchange holidays (the New York exchange trades on some public holidays and closes on others, such as Good Friday); no early closes, no time zones; an own list has to be maintained by hand.
 
-## Proposal
+## Decision
 exchange_calendars, created with a start date that covers the full loaded history, wrapped in one small module of the project (`forecasting.trading_calendar`) that answers the four questions above. Each security in the configuration names its exchange by MIC. The package is updated once a year to extend the year ahead, and the error raised outside the covered range is surfaced, not hidden.

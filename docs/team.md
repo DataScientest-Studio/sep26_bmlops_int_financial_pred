@@ -12,7 +12,7 @@ Each member owns one area from phase 1 to the defense and presents it at the def
 |---|---|---|---|---|
 | Data | [team member A, B, or C] | database, one-time load | daily ingestion, replay, trading calendar, DVC, ingestion DAG | prediction log tables, outcome collection |
 | Model | [team member A, B, or C] | training and prediction functions, baselines | MLflow tracking and registry, promotion rule, training DAG | Evidently drift DAGs, triggered retraining |
-| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, API access (users and roles) | Prometheus and Grafana, alerts, Streamlit |
+| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, API access (users and roles) | Prometheus and Grafana, alerts, demo app |
 
 CI (`.github/workflows/ci.yaml`): Tobias.
 
@@ -47,4 +47,4 @@ Alternatives:
 - Task list in Slack or a shared document: no setup; no assignment, history or link to the code.
 
 ## Code review
-Every change goes through a pull request (rules in `plan.md`, "Decision proposals"). The reviewer is the next member in the ring: Data → Model → Service → Data. So every member also knows a second area.
+Once the foundation is built, every change goes through a pull request (`plan.md`, "Code review" in Open). The reviewer is the next member in the ring: Data → Model → Service → Data. So every member also knows a second area.
