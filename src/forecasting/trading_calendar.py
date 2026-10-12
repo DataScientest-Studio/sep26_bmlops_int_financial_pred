@@ -4,7 +4,9 @@ Built on exchange_calendars; exchanges are named by their Market Identifier Code
 (MIC), for example XNYS for the New York Stock Exchange.
 """
 
-from datetime import date
+from datetime import date, timedelta
+
+import exchange_calendars
 
 
 def is_trading_day(exchange: str, day: date) -> bool:
@@ -18,8 +20,14 @@ def is_trading_day(exchange: str, day: date) -> bool:
 
     Returns:
         True on a trading day; False on weekends, holidays and closures.
+
+    Raises:
+        exchange_calendars.errors.DateOutOfBounds: If `day` lies outside the calendar's
+            range.
     """
-    raise NotImplementedError
+    calendar = exchange_calendars.get_calendar(exchange)
+
+    return calendar.is_session(day)
 
 
 def next_trading_day(exchange: str, day: date) -> date:
@@ -34,8 +42,14 @@ def next_trading_day(exchange: str, day: date) -> date:
 
     Returns:
         The next trading day, strictly after `day`.
+
+    Raises:
+        exchange_calendars.errors.DateOutOfBounds: If the next trading day lies outside
+            the calendar's range.
     """
-    raise NotImplementedError
+    calendar = exchange_calendars.get_calendar(exchange)
+
+    return calendar.date_to_session(day + timedelta(days=1), direction="next").date()
 
 
 def trading_days(exchange: str, start: date, end: date) -> list[date]:
@@ -50,5 +64,11 @@ def trading_days(exchange: str, start: date, end: date) -> list[date]:
 
     Returns:
         The trading days in order.
+
+    Raises:
+        exchange_calendars.errors.DateOutOfBounds: If `start` or `end` lies outside the
+            calendar's range.
     """
-    raise NotImplementedError
+    calendar = exchange_calendars.get_calendar(exchange)
+
+    return [session.date() for session in calendar.sessions_in_range(start, end)]
