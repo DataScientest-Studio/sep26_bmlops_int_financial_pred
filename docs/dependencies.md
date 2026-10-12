@@ -21,7 +21,7 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 | pytest | Test framework: finds functions named `test_…`, runs them and reports failures. | All tests: `make test`, `make acceptance`. |
 | pytest-xdist | Runs tests in several worker processes at once (`-n auto`: one per CPU core). | Faster test runs; each worker gets its own test database. |
 | httpx2 | HTTP client library, the successor of `httpx`. FastAPI's test client is built on it: tests send requests to the API in memory, without starting a server or opening a port. | API tests (`fastapi.testclient.TestClient`). |
-| ruff | Linter and formatter: finds errors and style problems, formats code (88 characters per line, Google-style docstrings). | `uv run ruff check`, `uv run ruff format`. |
+| ruff | Linter and formatter: finds errors and style problems, formats code (88 characters per line, Google-style docstrings). | `make lint` (also on every push); `uv run ruff format` formats the code. |
 
 ## Tools run without installing
 

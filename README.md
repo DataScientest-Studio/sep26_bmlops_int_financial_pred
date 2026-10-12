@@ -12,6 +12,8 @@ Planning. The service is not built yet.
 ## Project structure
 ```
 ├── README.md
+├── .github/workflows/
+│   └── ci.yaml                  style check and unit tests on every push (GitHub Actions)
 ├── Makefile                     setup and maintenance commands
 ├── pyproject.toml               project metadata and packages
 ├── uv.lock                      exact versions of all packages, written by uv
@@ -83,6 +85,7 @@ make db                   # starts PostgreSQL, waits until it is ready
 | `make db` | start the database |
 | `make db-stop` | stop it; the data is kept |
 | `make db-shell` | SQL prompt in the database |
+| `make lint` | code style and formatting check (ruff); changes no files |
 | `make test` | unit and integration tests (needs `make db`) |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
 | `make api` | API on http://localhost:8000, documentation at `/docs` |

@@ -1,4 +1,4 @@
-.PHONY: setup requirements db db-stop db-shell test acceptance api
+.PHONY: setup requirements lint db db-stop db-shell test acceptance api
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
@@ -11,6 +11,11 @@ setup:
 # Regenerates docs/requirements.md from docs/requirements.sdoc.
 requirements:
 	tools/export-requirements.sh
+
+# Checks code style and formatting; changes no files.
+lint:
+	uv run ruff check
+	uv run ruff format --check
 
 # Starts the database and waits until it accepts connections.
 db:

@@ -43,6 +43,7 @@ To be decided by the team.
   - StrictDoc (proposed): each requirement has an ID that code and tests can refer to; checked by the tool, exported to readable Markdown; a text format the team has to learn.
   - Plain Markdown list in the repo: no tool, readable on GitHub at once; IDs and links are kept by hand, nothing checks them.
   - GitHub Issues or Projects: doubles as the task board (assignment, links to pull requests); requirements mix with tasks and are not versioned with the code.
+- Continuous integration: every push runs the style check and the unit tests on GitHub (`.github/workflows/ci.yaml`, the same `make lint` and `make test` as on our machines); a failed run emails the person who pushed. Owner: Tobias. Once the repo location is settled (`repo-move`), `main` gets protected: changes only through a pull request with green checks (see "Code review"). Nightly runs: later, if needed.
 
 ## Roadmap — proposal
 To be agreed by the team. Team setup and areas: `docs/team.md`.
@@ -107,4 +108,3 @@ In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see "R
 - Training and prediction code: one file or two (the coach accepts either). Proposal: separate modules for training, prediction and evaluation (`src/forecasting/`), as in the course scaffold and the past group projects.
 - Defense date: the coach says Nov 17 or 18, the SEP26 sheet says Monday or Tuesday (Nov 16 or 17); the sheet also lists a mock defense call on Nov 12. (Ask the coach.)
 - `requirements.txt`: the course scaffold ships one (the classic pip package list) and its stub CI may install from it. The project environment is managed by uv (`pyproject.toml`, `uv.lock`). Drop `requirements.txt`, or keep it as a file generated from `uv.lock` (`uv export --format requirements-txt`) for anyone using plain pip? Generated, it must be regenerated after every package change.
-- Development process: how much is expected — a GitHub Actions workflow (the course lists one as optional: lint, tests, image build), ruff for linting and formatting, scheduled (nightly) test runs? (Ask the coach.) Code review is a team decision, see "Decision proposals".

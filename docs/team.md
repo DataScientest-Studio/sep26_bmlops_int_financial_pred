@@ -12,7 +12,9 @@ Each member owns one area from phase 1 to the defense and presents it at the def
 |---|---|---|---|---|
 | Data | [team member A, B, or C] | database, one-time load | daily ingestion, replay, trading calendar, DVC, ingestion DAG | prediction log tables, outcome collection |
 | Model | [team member A, B, or C] | training and prediction functions, baselines | MLflow tracking and registry, promotion rule, training DAG | Evidently drift DAGs, triggered retraining |
-| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, API access (users and roles), CI (optional) | Prometheus and Grafana, alerts, Streamlit |
+| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, API access (users and roles) | Prometheus and Grafana, alerts, Streamlit |
+
+CI (`.github/workflows/ci.yaml`): Tobias.
 
 Shared by all: README and docs, the presentation, the interfaces between areas (agreed together, see `plan.md`).
 
