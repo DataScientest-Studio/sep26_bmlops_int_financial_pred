@@ -1,5 +1,5 @@
 -- Made-up prices for trying the example queries; db/queries/remove-sample-data.sql removes them.
--- The suffix .SAMPLE keeps them apart from real prices, which are stored as AAPL and SAP.
+-- The suffix .SAMPLE keeps them apart from real prices, which are stored as AAPL.US and SAP.XETRA.
 -- Rows that already exist are skipped, so the file can be run again.
 
 INSERT INTO prices (symbol, day, open, high, low, close, volume) VALUES

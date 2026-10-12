@@ -44,7 +44,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The system loads the complete daily price history (open, high, low, close, volume) of each configured security and market index into its database in a single run.
+**Statement**: The system loads the complete daily price history (open, high, low, close, volume) of each configured security and market index, and each security's splits and dividends, into its database in a single run. Prices and volumes are stored as traded on each day, not adjusted for later splits or dividends.
 
 ### Daily ingestion
 

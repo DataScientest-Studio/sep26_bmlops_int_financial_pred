@@ -13,7 +13,7 @@ class Security:
     """A security the system forecasts.
 
     Attributes:
-        symbol: Ticker as the data source names it, for example "AAPL".
+        symbol: Ticker as the data source names it, for example "AAPL.US".
         exchange: Market Identifier Code (MIC) of its exchange, for example "XNAS".
     """
 

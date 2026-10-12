@@ -104,7 +104,7 @@ More examples are in `db/queries/examples.sql`. Run a file with:
 docker compose exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"' < db/queries/examples.sql
 ```
 
-To try the examples before real prices are loaded, run `db/queries/sample-data.sql` the same way. It adds made-up prices under the symbols `AAPL.SAMPLE` and `SAP.SAMPLE`; the suffix keeps them apart from real prices, which are stored as `AAPL` and `SAP`. `db/queries/remove-sample-data.sql` removes them again:
+To try the examples before real prices are loaded, run `db/queries/sample-data.sql` the same way. It adds made-up prices under the symbols `AAPL.SAMPLE` and `SAP.SAMPLE`; the suffix keeps them apart from real prices, which are stored as `AAPL.US` and `SAP.XETRA`. `db/queries/remove-sample-data.sql` removes them again:
 
 ```sql
 DELETE FROM prices WHERE symbol LIKE '%.SAMPLE';

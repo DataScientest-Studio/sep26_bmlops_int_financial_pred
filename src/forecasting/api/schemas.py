@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 class SecurityRequest(BaseModel):
     """Names the security a request is about."""
 
-    symbol: Annotated[str, Field(min_length=1, max_length=20, examples=["AAPL"])]
+    symbol: Annotated[str, Field(min_length=1, max_length=20, examples=["AAPL.US"])]
 
 
 class ForecastResponse(BaseModel):

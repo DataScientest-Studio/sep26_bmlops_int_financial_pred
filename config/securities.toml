@@ -25,8 +25,9 @@ exchange = "XNYS"
 symbol = "SAP.XETRA"
 exchange = "XETR"
 
-# Market indices: loaded like the securities as reference series, never trained or
-# forecast. exchange: MIC whose trading calendar and close the index follows.
+# Market indices: loaded like the securities as reference series, never a forecast
+# target; the model may use them as inputs. exchange: MIC whose trading calendar and
+# close the index follows.
 
 [[indices]]
 symbol = "GSPC.INDX"
