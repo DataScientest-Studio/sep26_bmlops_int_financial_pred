@@ -28,7 +28,7 @@ Precedence where sources conflict: coach (forum post, introduction video) > subj
 | Report methodology | `course-material/(EN) Projects_methodology_report.pdf` | generic DS report guide; no report required here |
 | Defense methodology | `course-material/Projet_Soutenance_Méthodologie_DS_EN.pdf` | generic DS defense guide |
 | ML Canvas | `course-material/template Machine Learning Canvas (v1.1).pdf` | blank template (Louis Dorard, ownml.co) |
-| Course repo | `github.com/DataScientest-Studio/sep26_bmlops_int_financial_pred` | the team repo; cookiecutter scaffold (README copied from "movie_recommandation", which invites modifications; folders for data, notebooks, reports, `src/` per step; stub CI runs `pytest` with no tests → fails) |
+| Course repo | `github.com/DataScientest-Studio/sep26_bmlops_int_financial_pred` | the team repo; holds this project with its full history and its own structure |
 
 ## Online originals of the material
 The Google links in the course point to the files under `course-material/`:

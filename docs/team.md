@@ -14,8 +14,6 @@ Each member owns one area from phase 1 to the defense and presents it at the def
 | Model | [team member A, B, or C] | training and prediction functions, baselines | MLflow tracking and registry, promotion rule, training DAG | Evidently drift DAGs, triggered retraining |
 | Service | [team member A, B, or C] | FastAPI, tests | Compose stack, API access (users and roles) | Prometheus and Grafana, alerts, demo app |
 
-CI (`.github/workflows/ci.yaml`): Tobias.
-
 Shared by all: README and docs, the presentation, the interfaces between areas (agreed together, see `plan.md`).
 
 Alternatives:

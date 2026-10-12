@@ -14,7 +14,7 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Trading calendar | the `exchange_calendars` package, wrapped in one module of the project | Built | Oct 12, 2026 1) | [`decisions/trading-calendar.md`](decisions/trading-calendar.md) |
 | Test strategy | acceptance tests per requirement first, unit tests with the code; pytest with pytest-xdist | Built | Oct 12, 2026 1) | [Test strategy](#test-strategy) |
 | Requirements | StrictDoc, top level only (~15–25); source `docs/requirements.sdoc`, `make requirements` regenerates `docs/requirements.md` after every change | Built | Oct 12, 2026 1) | — |
-| Continuous integration | every push runs `make lint` and `make test` on GitHub; owner Tobias | Built | Oct 12, 2026 1) | [Continuous integration](#continuous-integration) |
+| Continuous integration | every push runs `make lint` and `make test` on GitHub | Built | Oct 12, 2026 1) | [Continuous integration](#continuous-integration) |
 | Data source | EODHD, free tier (20 calls per day, 1 year of history); each member uses their own free key; `make load` fills a new database, `make update` adds the new trading days | Agreed | Oct 12, 2026 1) | [Data source](#data-source) |
 | Close prices | prices stored as they printed; splits and dividends in tables of their own | Agreed | Oct 12, 2026 1) | [Close prices](#close-prices) |
 | Package and login | Python package `forecasting`; development login `admin`/`admin` in `.env.example`, for local use only | Built | Oct 12, 2026 1) | — |
@@ -31,7 +31,7 @@ HTTP basic authentication against a `users` table in the project database (passw
 requirements first. Each requirement names how it is checked: Test, Demonstration or Inspection (`requirements.md`, "How requirements are checked"). For every requirement checked by Test, black-box acceptance tests are written before the code (TDD); the share of passing acceptance tests is the progress indicator (`make acceptance`). Below them: unit tests for the pure functions (features, target, no look-ahead, baselines, metrics, trading calendar), API tests with swapped-in parts, and integration tests against a throwaway database with a small fixed price set. Each pytest-xdist worker gets its own test database; tests never use the network, a cloud service or real e-mail. No model-quality thresholds: tests check that the comparison with the baselines is computed, not that the model wins. Acceptance tests of phase 1 are in `tests/acceptance/`; those of phases 2 and 3 are written when each phase starts.
 
 ### Continuous integration
-every push runs the style check and the unit tests on GitHub (`.github/workflows/ci.yaml`, the same `make lint` and `make test` as on our machines); a failed run emails the person who pushed. Owner: Tobias. Once the project is in the course repo, `main` gets protected: changes only through a pull request with green checks (see "Code review" in Open). Nightly runs: later, if needed.
+every push runs the style check and the unit tests on GitHub (`.github/workflows/ci.yaml`, the same `make lint` and `make test` as on our machines); a failed run emails the person who pushed. `main` in the course repo refuses deletion and force pushes; once code review starts, changes reach it only through a pull request with green checks (see "Code review" in Open). Nightly runs: later, if needed.
 
 ### Data source
 EODHD, free tier: 20 calls per day and 1 year of history; each request costs one call per security. Prices, splits and dividends all come from EODHD. Each member signs up for their own free key and keeps it in their own `.env` (`EODHD_API_KEY`). `make load` fills a new database as far back as the plan allows; `make update` adds the trading days since the last stored one. How the daily calls are spent: "Daily call budget" in Open.
@@ -102,8 +102,8 @@ Goal: a teammate runs `git clone` and a handful of `make` commands and gets a ru
 | 7 | Minimum tests and docs | unit tests (pytest, run in parallel with pytest-xdist) for feature building and both endpoints; README section "Setup from a fresh clone" | 2–6 |
 
 Repo sharing (item 1): every member works with their own GitHub account; access is granted to the accounts, never shared. Each member brings their GitHub username to the meeting.
-- Team repo: the course repo `DataScientest-Studio/sep26_bmlops_int_financial_pred`, holding this project's full history. Members get access through the coach's request for their GitHub usernames; one member already has admin rights and can invite the others.
-- "Changes only through reviewed pull requests" is enforced by a branch protection rule on `main`; on a free plan only for public repos, otherwise by team discipline.
+- Team repo: the course repo `DataScientest-Studio/sep26_bmlops_int_financial_pred`, holding this project's full history. Members get write access by invitation from an admin of the repo.
+- "Changes only through reviewed pull requests" is enforced by a ruleset on `main`; GitHub enforces it because the course repo is public.
 
 Interfaces to agree at the meeting, so items 3–6 can be built in parallel:
 - Table: `prices(symbol, day, open, high, low, close, volume)`, primary key (symbol, day).
