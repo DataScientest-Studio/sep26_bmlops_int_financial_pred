@@ -1,22 +1,24 @@
 """Fixtures shared by all tests.
 
-Database tests need the local PostgreSQL server (`make db`) and the variables of
-`.env`. Each pytest-xdist worker gets its own database, created from
-`db/init/`, so workers never share data.
+Tests use the settings of `.env.example`, which `make test` loads. Database tests
+need the local PostgreSQL server (`make db`) with the login from `.env.example`. Each
+pytest-xdist worker gets its own database, created from `db/init/`, so workers never
+share data.
 """
 
-import os
+from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from psycopg import sql
-from sqlalchemy import text
+from sqlalchemy import Engine, make_url, text
 
 from forecasting.api.app import create_app
 from forecasting.api.dependencies import get_engine, get_settings
-from forecasting.config import Settings
+from forecasting.config import Settings, load_settings
 from forecasting.db import connect
 from tests.fakes import SECURITIES
 
@@ -24,29 +26,31 @@ INIT_DIR = Path(__file__).parent.parent / "db" / "init"
 
 
 @pytest.fixture(scope="session")
-def database_url(worker_id: str):
+def example_settings() -> Settings:
+    """Settings from `.env.example`, which `make test` loads."""
+    return load_settings()
+
+
+@pytest.fixture(scope="session")
+def database_url(example_settings: Settings, worker_id: str) -> Iterator[str]:
     """Create an empty project database for this worker; drop it afterwards."""
-    env = os.environ
-    name = f"forecasting_test_{worker_id}"
-    server = dict(
-        user=env["POSTGRES_USER"],
-        password=env["POSTGRES_PASSWORD"],
-        host=env["POSTGRES_HOST"],
-        port=env["POSTGRES_PORT"],
-    )
-    with psycopg.connect(dbname=env["POSTGRES_DB"], autocommit=True, **server) as admin:
+    # SQLAlchemy names its driver in the URL (postgresql+psycopg://); psycopg itself
+    # takes only the plain postgresql:// form.
+    sqlalchemy_url = make_url(example_settings.database_url)
+    name = f"{sqlalchemy_url.database}_test_{worker_id}"
+    psycopg_url = sqlalchemy_url.set(drivername="postgresql")
+    admin_url = psycopg_url.render_as_string(hide_password=False)
+    test_url = psycopg_url.set(database=name).render_as_string(hide_password=False)
+    with psycopg.connect(admin_url, autocommit=True) as admin:
         admin.execute(
             sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(name))
         )
         admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-    with psycopg.connect(dbname=name, autocommit=True, **server) as db:
+    with psycopg.connect(test_url, autocommit=True) as db:
         for script in sorted(INIT_DIR.glob("*.sql")):
             db.execute(script.read_text())
-    yield (
-        f"postgresql+psycopg://{server['user']}:{server['password']}"
-        f"@{server['host']}:{server['port']}/{name}"
-    )
-    with psycopg.connect(dbname=env["POSTGRES_DB"], autocommit=True, **server) as admin:
+    yield sqlalchemy_url.set(database=name).render_as_string(hide_password=False)
+    with psycopg.connect(admin_url, autocommit=True) as admin:
         admin.execute(
             sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
                 sql.Identifier(name)
@@ -55,7 +59,7 @@ def database_url(worker_id: str):
 
 
 @pytest.fixture
-def engine(database_url: str):
+def engine(database_url: str) -> Iterator[Engine]:
     """Engine of this worker's database, emptied before each test."""
     engine = connect(database_url)
     with engine.begin() as connection:
@@ -65,13 +69,18 @@ def engine(database_url: str):
 
 
 @pytest.fixture
-def settings(database_url: str, tmp_path: Path) -> Settings:
-    """Settings for the test securities, with models saved under `tmp_path`."""
-    return Settings(database_url, tmp_path / "models", SECURITIES)
+def settings(example_settings: Settings, database_url: str, tmp_path: Path) -> Settings:
+    """Test settings on this worker's database, test securities and model folder."""
+    return replace(
+        example_settings,
+        database_url=database_url,
+        model_dir=tmp_path / example_settings.model_dir,
+        securities=SECURITIES,
+    )
 
 
 @pytest.fixture
-def client(engine, settings: Settings):
+def client(engine: Engine, settings: Settings) -> Iterator[TestClient]:
     """API client whose endpoints use the test database and settings."""
     app = create_app()
     app.dependency_overrides[get_engine] = lambda: engine

@@ -29,13 +29,18 @@ db-stop:
 db-shell:
 	docker compose exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
-# Runs unit and integration tests in parallel; needs the database (make db).
+# Tests see only the settings of .env.example: the shell's own variables are cleared,
+# apart from PATH and HOME, which uv needs.
+TEST_ENV = env -i PATH="$$PATH" HOME="$$HOME" uv run --env-file .env.example
+
+# Runs unit and integration tests in parallel; needs the database (make db) with the
+# login from .env.example.
 test:
-	uv run --env-file .env pytest -n auto -m "not acceptance"
+	$(TEST_ENV) pytest -n auto -m "not acceptance"
 
 # Runs the black-box tests of the requirements; the passed count shows progress.
 acceptance:
-	uv run --env-file .env pytest -n auto -m acceptance
+	$(TEST_ENV) pytest -n auto -m acceptance
 
 # Starts the API on http://localhost:8000 (docs at /docs).
 api:
