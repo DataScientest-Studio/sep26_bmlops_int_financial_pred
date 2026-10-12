@@ -31,7 +31,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+addopts = "--strict-markers -rA"
 markers = ["acceptance: black-box test of a requirement; red until the feature is built"]
 
 [tool.ruff.lint]
