@@ -1,12 +1,27 @@
 """Loading of daily prices from a data source into the database."""
 
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from typing import Protocol
 
 import pandas as pd
-from sqlalchemy import Engine
+from sqlalchemy import Connection, Engine, text
 
 from forecasting.config import Security
+from forecasting.db import PRICE_COLUMNS
+from forecasting.trading_calendar import session_close
+
+SAVE_QUOTE = text(
+    """
+    INSERT INTO prices (symbol, day, open, high, low, close, volume, fetched_at)
+    VALUES (:symbol, :day, :open, :high, :low, :close, :volume, :fetched_at)
+    ON CONFLICT (symbol, day) DO UPDATE SET
+        open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
+        close = EXCLUDED.close, volume = EXCLUDED.volume,
+        fetched_at = EXCLUDED.fetched_at
+    WHERE prices.fetched_at < :final_from AND prices.fetched_at < EXCLUDED.fetched_at
+    """
+)
 
 
 class PriceSource(Protocol):
@@ -19,8 +34,9 @@ class PriceSource(Protocol):
             symbol: Ticker of the security.
 
         Returns:
-            One row per day with the columns in `forecasting.db.PRICE_COLUMNS`,
-            as delivered: rows may be invalid.
+            One row per day with the columns in `forecasting.db.PRICE_COLUMNS`, as
+            delivered: rows may be invalid. `day` holds `datetime.date` values and
+            `fetched_at` the time of the fetch, timezone-aware.
         """
 
 
@@ -29,31 +45,136 @@ class LoadReport:
     """Outcome of a load.
 
     Attributes:
-        stored: Number of quotes written to the database.
+        stored: Number of quotes of new days written to the database.
+        replaced: Number of provisional quotes overwritten by a later fetch.
         rejected: Number of quotes refused by validation.
     """
 
     stored: int
+    replaced: int
     rejected: int
 
 
+def is_final(
+    exchange: str, day: date, fetched_at: datetime, final_delay: timedelta
+) -> bool:
+    """Tell whether a quote's close is final or still provisional.
+
+    @relation(REQ-DAT-007, scope=function)
+
+    Args:
+        exchange: MIC of the exchange the security trades on.
+        day: Trading day of the quote.
+        fetched_at: Time the quote was fetched, timezone-aware.
+        final_delay: Time after the exchange's close from which a quote is final.
+
+    Returns:
+        True if the quote was fetched at or after the close plus the delay.
+    """
+    return fetched_at >= _final_from(exchange, day, final_delay)
+
+
+def _final_from(exchange: str, day: date, final_delay: timedelta) -> datetime:
+    """Return the moment from which a fetched quote of that day is final.
+
+    Args:
+        exchange: MIC of the exchange the security trades on.
+        day: Trading day of the quote.
+        final_delay: Time after the exchange's close from which a quote is final.
+
+    Returns:
+        The exchange's close that day plus the delay, in UTC.
+    """
+    return session_close(exchange, day) + final_delay
+
+
+def _valid_quotes(delivery: pd.DataFrame) -> pd.DataFrame:
+    """Keep the quotes that pass validation.
+
+    A quote is refused if a field is missing, a price is zero or below, or its day
+    was already delivered earlier in the same delivery.
+
+    Args:
+        delivery: Quotes of one security, as the source delivered them.
+
+    Returns:
+        The valid quotes, in delivered order.
+    """
+    # Each line gives one True/False value per row. True where no field is empty:
+    complete = delivery[PRICE_COLUMNS].notna().all(axis="columns")
+    # True where all four prices are above zero; an empty price compares as False:
+    positive = (delivery[["open", "high", "low", "close"]] > 0).all(axis="columns")
+    # duplicated() marks the second and later rows of a day; ~ turns that around:
+    first_of_day = ~delivery["day"].duplicated()
+
+    return delivery[complete & positive & first_of_day]
+
+
+def _stored_fetch_times(connection: Connection, symbol: str) -> dict[date, datetime]:
+    """Read when each stored quote of one security was fetched.
+
+    Args:
+        connection: Open connection to the project database.
+        symbol: Ticker of the security.
+
+    Returns:
+        The fetch time per stored day.
+    """
+    query = text("SELECT day, fetched_at FROM prices WHERE symbol = :symbol")
+    result = connection.execute(query, {"symbol": symbol})
+
+    return {day: fetched_at for day, fetched_at in result}
+
+
 def load_history(
-    engine: Engine, source: PriceSource, securities: tuple[Security, ...]
+    engine: Engine,
+    source: PriceSource,
+    securities: tuple[Security, ...],
+    final_delay: timedelta,
 ) -> LoadReport:
     """Load the complete price history of each security in one run.
 
-    A quote already stored for the same security and day is kept, so a
-    repeated run adds no duplicates.
+    A day not yet stored is added. A stored quote that is still provisional is
+    replaced by a later fetch; a final quote is kept. So a repeated run adds
+    no duplicates and never changes a final close.
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-005, scope=function)
+    @relation(REQ-DAT-007, scope=function)
 
     Args:
         engine: Engine of the project database.
         source: Where the prices come from.
         securities: The securities to load.
+        final_delay: Time after the exchange's close from which a quote is final.
 
     Returns:
-        How many quotes were stored and how many were rejected.
+        How many quotes were stored, replaced and rejected.
     """
-    raise NotImplementedError
+    stored = replaced = rejected = 0
+    with engine.begin() as connection:
+        for security in securities:
+            delivery = source.fetch_history(security.symbol)
+            valid = _valid_quotes(delivery)
+            rejected += len(delivery) - len(valid)
+            fetched = _stored_fetch_times(connection, security.symbol)
+            to_save = []
+            for quote in valid[PRICE_COLUMNS].to_dict("records"):
+                day = quote["day"]
+                if day not in fetched:
+                    stored += 1
+                elif quote["fetched_at"] > fetched[day] and not is_final(
+                    security.exchange, day, fetched[day], final_delay
+                ):
+                    replaced += 1
+                else:
+                    continue
+                # The database itself replaces only a provisional quote and only with
+                # a later fetch; final_from tells it from when a quote is final.
+                final_from = _final_from(security.exchange, day, final_delay)
+                row = {**quote, "symbol": security.symbol, "final_from": final_from}
+                to_save.append(row)
+            if to_save:
+                connection.execute(SAVE_QUOTE, to_save)
+
+    return LoadReport(stored, replaced, rejected)

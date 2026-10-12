@@ -7,7 +7,7 @@ GROUP BY symbol
 ORDER BY symbol;
 
 -- The five most recent days of one security (on real prices: 'AAPL.US').
-SELECT day, open, high, low, close, volume
+SELECT day, open, high, low, close, volume, fetched_at
 FROM prices
 WHERE symbol = 'AAPL.SAMPLE'
 ORDER BY day DESC

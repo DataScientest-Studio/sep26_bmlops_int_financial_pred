@@ -1,5 +1,7 @@
 """Stand-ins for outside systems, so tests need no network."""
 
+from datetime import datetime
+
 import exchange_calendars
 import numpy as np
 import pandas as pd
@@ -7,6 +9,7 @@ import pandas as pd
 from forecasting.config import Security
 
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
+FETCHED_AT = datetime.fromisoformat("2026-01-02T12:00:00+00:00")
 
 
 def price_history(exchange: str, start: str, end: str, seed: int) -> pd.DataFrame:
@@ -39,13 +42,17 @@ def price_history(exchange: str, start: str, end: str, seed: int) -> pd.DataFram
 class FakeSource:
     """A data source that delivers prepared price histories."""
 
-    def __init__(self, histories: dict[str, pd.DataFrame]) -> None:
-        """Keep the histories to deliver.
+    def __init__(
+        self, histories: dict[str, pd.DataFrame], fetched_at: datetime = FETCHED_AT
+    ) -> None:
+        """Keep the histories to deliver and the fetch time to stamp on them.
 
         Args:
             histories: Price history per ticker.
+            fetched_at: Time the fetch takes place (UTC); tests move it between loads.
         """
         self.histories = histories
+        self.fetched_at = fetched_at
 
     def fetch_history(self, symbol: str) -> pd.DataFrame:
         """Deliver the prepared history of one security.
@@ -54,9 +61,12 @@ class FakeSource:
             symbol: Ticker of the security.
 
         Returns:
-            A copy of the prepared history.
+            A copy of the prepared history, each row stamped with `fetched_at`.
         """
-        return self.histories[symbol].copy()
+        history = self.histories[symbol].copy()
+        history["fetched_at"] = self.fetched_at
+
+        return history
 
 
 def standard_source() -> FakeSource:

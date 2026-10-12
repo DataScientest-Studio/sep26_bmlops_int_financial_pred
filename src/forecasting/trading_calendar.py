@@ -4,7 +4,7 @@ Built on exchange_calendars; exchanges are named by their Market Identifier Code
 (MIC), for example XNYS for the New York Stock Exchange.
 """
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 import exchange_calendars
 
@@ -72,3 +72,24 @@ def trading_days(exchange: str, start: date, end: date) -> list[date]:
     calendar = exchange_calendars.get_calendar(exchange)
 
     return [session.date() for session in calendar.sessions_in_range(start, end)]
+
+
+def session_close(exchange: str, day: date) -> datetime:
+    """Return the time the exchange's trading session closes, in UTC.
+
+    @relation(REQ-DAT-007, scope=function)
+
+    Args:
+        exchange: MIC of the exchange.
+        day: A trading day of that exchange.
+
+    Returns:
+        The closing time as a timezone-aware datetime in UTC; early closes included.
+
+    Raises:
+        exchange_calendars.errors.NotSessionError: If `day` is not a trading day or lies
+            outside the calendar's range.
+    """
+    calendar = exchange_calendars.get_calendar(exchange)
+
+    return calendar.session_close(day).to_pydatetime()

@@ -52,7 +52,7 @@ def test_features_of_a_day_ignore_later_prices():
 
 def test_training_evaluates_on_days_after_the_training_period(engine, settings):
     """REQ-MOD-003: evaluation days are later than every training day."""
-    load_history(engine, standard_source(), SECURITIES)
+    load_history(engine, standard_source(), SECURITIES, settings.final_delay)
     result = train(engine, settings, SECURITIES[0].symbol)
     assert result.evaluation_start > result.training_end
     assert result.evaluation.days > 0

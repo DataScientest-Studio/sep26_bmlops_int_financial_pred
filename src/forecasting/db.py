@@ -3,7 +3,7 @@
 import pandas as pd
 from sqlalchemy import Engine, create_engine
 
-PRICE_COLUMNS = ["day", "open", "high", "low", "close", "volume"]
+PRICE_COLUMNS = ["day", "open", "high", "low", "close", "volume", "fetched_at"]
 
 
 def connect(database_url: str) -> Engine:
