@@ -12,7 +12,7 @@ Preparation for a team decision. Requirement "Trading calendar" (REQ-DAT-004): o
 
 ### exchange_calendars
 Library of exchange calendars, one per exchange, named by the exchange's standard code (MIC: XNYS for the New York Stock Exchange, XETR for Xetra, XPAR for Euronext Paris).
-- Pros: answers all four questions directly (`is_session`, `next_session`, `session_close`, `sessions_in_range`); knows holidays, early closes and each exchange's time zone; a date outside its range raises an error instead of guessing; about 100 exchanges; actively maintained.
+- Pros: answers all four questions directly (`is_session`, `next_session`, `session_close`, `sessions_in_range`); knows holidays, early closes and each exchange's time zone; a date outside its range raises an error instead of guessing; "71 exchanges in version 4.13.2; actively maintained.
 - Pros: proven in a private system of a team member, used for several exchanges for daily closes.
 - Cons: by default it covers 20 years back and one year ahead; a longer history needs a start date when the calendar is created, and the year ahead is extended by updating the package once a year. Unplanned suspensions (a market closed for an event) appear only after a package update.
 
