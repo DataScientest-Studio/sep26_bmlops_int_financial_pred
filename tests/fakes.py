@@ -9,6 +9,7 @@ import pandas as pd
 from forecasting.config import Security
 
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
+INDICES = (Security("TEST.INDX", "XNYS"),)
 FETCHED_AT = datetime.fromisoformat("2026-01-02T12:00:00+00:00")
 
 
@@ -70,10 +71,10 @@ class FakeSource:
 
 
 def standard_source() -> FakeSource:
-    """Deliver about a year of valid prices for each test security."""
+    """Deliver about a year of valid prices for each test security and index."""
     return FakeSource(
         {
             s.symbol: price_history(s.exchange, "2025-01-01", "2025-12-31", seed=i)
-            for i, s in enumerate(SECURITIES)
+            for i, s in enumerate(SECURITIES + INDICES)
         }
     )

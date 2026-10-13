@@ -130,9 +130,10 @@ def load_history(
     engine: Engine,
     source: PriceSource,
     securities: tuple[Security, ...],
+    indices: tuple[Security, ...],
     final_delay: timedelta,
 ) -> LoadReport:
-    """Load the complete price history of each security in one run.
+    """Load the complete price history of each security and index in one run.
 
     A day not yet stored is added. A stored quote that is still provisional is
     replaced by a later fetch; a final quote is kept. So a repeated run adds
@@ -146,6 +147,7 @@ def load_history(
         engine: Engine of the project database.
         source: Where the prices come from.
         securities: The securities to load.
+        indices: Market indices; prices only, no splits or dividends.
         final_delay: Time after the exchange's close from which a quote is final.
 
     Returns:
@@ -153,7 +155,7 @@ def load_history(
     """
     stored = replaced = rejected = 0
     with engine.begin() as connection:
-        for security in securities:
+        for security in (*securities, *indices):
             delivery = source.fetch_history(security.symbol)
             valid = _valid_quotes(delivery)
             rejected += len(delivery) - len(valid)

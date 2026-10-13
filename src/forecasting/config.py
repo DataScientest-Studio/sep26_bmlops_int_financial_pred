@@ -13,7 +13,7 @@ SECURITIES_FILE = Path("config/securities.toml")
 
 @dataclass(frozen=True)
 class Security:
-    """A security the system forecasts.
+    """A stock or market index the system loads.
 
     Attributes:
         symbol: Ticker as the data source names it, for example "AAPL.US".
@@ -32,12 +32,14 @@ class Settings:
         database_url: SQLAlchemy URL of the project database.
         model_dir: Folder where trained models are saved.
         securities: The securities the system loads, trains and forecasts.
+        indices: Market indices loaded as reference series, never forecasts.
         final_delay: Time after an exchange's close from which a fetched price is final.
     """
 
     database_url: str = field(repr=False)
     model_dir: Path
     securities: tuple[Security, ...]
+    indices: tuple[Security, ...]
     final_delay: timedelta
 
 
@@ -64,8 +66,15 @@ def load_settings() -> Settings:
         database=env["POSTGRES_DB"],
     ).render_as_string(hide_password=False)
     with SECURITIES_FILE.open("rb") as file:
-        entries = tomllib.load(file)["securities"]
-    securities = tuple(Security(e["symbol"], e["exchange"]) for e in entries)
+        listed = tomllib.load(file)
+    securities = tuple(Security(**e) for e in listed["securities"])
+    indices = tuple(Security(**e) for e in listed["indices"])
     final_delay = timedelta(minutes=int(env["FINAL_DELAY_MINUTES"]))
 
-    return Settings(database_url, Path(env["MODEL_DIR"]), securities, final_delay)
+    return Settings(
+        database_url=database_url,
+        model_dir=Path(env["MODEL_DIR"]),
+        securities=securities,
+        indices=indices,
+        final_delay=final_delay,
+    )

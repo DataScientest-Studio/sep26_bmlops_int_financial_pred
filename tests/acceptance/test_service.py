@@ -11,7 +11,7 @@ pytestmark = pytest.mark.acceptance
 
 def test_training_endpoint_trains_and_reports_outcome(client, engine, settings):
     """REQ-SVC-002: a training request returns the new model and its scores."""
-    load_history(engine, standard_source(), SECURITIES, settings.final_delay)
+    load_history(engine, standard_source(), SECURITIES, (), settings.final_delay)
     response = client.post("/training", json={"symbol": SECURITIES[0].symbol})
     assert response.status_code == 200
     body = response.json()
@@ -26,7 +26,7 @@ def test_prediction_endpoint_forecasts_next_trading_day(client, engine, settings
     """REQ-SVC-001, REQ-MOD-001: forecast for the next trading day, with model."""
     security = SECURITIES[0]
     source = standard_source()
-    load_history(engine, source, SECURITIES, settings.final_delay)
+    load_history(engine, source, SECURITIES, (), settings.final_delay)
     trained = client.post("/training", json={"symbol": security.symbol}).json()
     response = client.post("/predict", json={"symbol": security.symbol})
     assert response.status_code == 200
