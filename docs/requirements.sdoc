@@ -229,7 +229,7 @@ TAGS: phase-1
 VERIFICATION: Test
 TITLE: Prediction endpoint
 STATEMENT: >>>
-The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched.
+The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched. A symbol that is not a configured security is refused.
 <<<
 
 [REQUIREMENT]
@@ -239,7 +239,7 @@ TAGS: phase-1
 VERIFICATION: Test
 TITLE: Training endpoint
 STATEMENT: >>>
-The API starts a training run on request and reports its outcome.
+The API starts a training run on request and reports its outcome. A symbol that is not a configured security is refused.
 <<<
 
 [REQUIREMENT]

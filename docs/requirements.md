@@ -160,7 +160,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched.
+**Statement**: The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched. A symbol that is not a configured security is refused.
 
 ### Training endpoint
 
@@ -169,7 +169,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The API starts a training run on request and reports its outcome.
+**Statement**: The API starts a training run on request and reports its outcome. A symbol that is not a configured security is refused.
 
 ### Prediction log
 
