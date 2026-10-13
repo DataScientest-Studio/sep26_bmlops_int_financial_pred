@@ -46,3 +46,15 @@ def test_securities_file_refuses_a_value_that_is_no_text(
     )
     with pytest.raises(ValueError, match="must be a non-empty text"):
         load_settings()
+
+
+def test_history_start_before_the_calendar_is_refused(monkeypatch, tmp_path):
+    """A first day of history before the calendar's first day is refused."""
+    _use_securities_file(
+        monkeypatch,
+        tmp_path,
+        "[[securities]]\nsymbol = 'TEST.US'\nexchange = 'XNYS'\n\n" + INDEX_ENTRY,
+    )
+    monkeypatch.setenv("HISTORY_START", "1979-12-31")
+    with pytest.raises(ValueError, match="HISTORY_START"):
+        load_settings()

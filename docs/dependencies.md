@@ -13,14 +13,14 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 | sqlalchemy | Database toolkit: one way to connect to and query SQL databases, independent of the database product; pandas reads and writes tables through it. | Connection to PostgreSQL (`forecasting.db`), reading and writing prices. |
 | psycopg (with `binary`) | The PostgreSQL driver for Python: the part that actually talks to the PostgreSQL server over the network. SQLAlchemy uses it underneath (`postgresql+psycopg://…` in the connection URL). `binary` installs a ready-built version, so no compiler or PostgreSQL client libraries are needed. | Every database connection; the test fixtures use it directly to create and drop test databases. |
 | exchange-calendars | Trading calendars of about 100 exchanges: trading days, holidays, early closes, time zones. | `forecasting.trading_calendar` (see `decisions/trading-calendar.md`). |
+| httpx2 | HTTP client library, the successor of `httpx`: sends requests to web services and reads their answers. FastAPI's test client is built on it too: tests send requests to the API in memory, without starting a server or opening a port. | Fetching prices, splits and dividends from EODHD (`forecasting.eodhd`); API tests (`fastapi.testclient.TestClient`); `make contract`. |
 
 ## Development only (`dev` group)
 
 | Package | What it does | Used for |
 |---|---|---|
-| pytest | Test framework: finds functions named `test_…`, runs them and reports failures. | All tests: `make test`, `make acceptance`. |
+| pytest | Test framework: finds functions named `test_…`, runs them and reports failures. | All tests: `make test`, `make acceptance`, `make contract`. |
 | pytest-xdist | Runs tests in several worker processes at once (`-n auto`: one per CPU core). | Faster test runs; each worker gets its own test database. |
-| httpx2 | HTTP client library, the successor of `httpx`. FastAPI's test client is built on it: tests send requests to the API in memory, without starting a server or opening a port. | API tests (`fastapi.testclient.TestClient`). |
 | ruff | Linter and formatter: finds errors and style problems, formats code (88 characters per line, Google-style docstrings). | `make lint` (also on every push); `uv run ruff format` formats the code. |
 | pyright | Type checker: finds calls with arguments or results of the wrong type before the code runs. VS Code's Pylance is built on it, so the editor and `make lint` report the same. The `nodejs` extra installs the Node.js runtime it needs. | `make lint` (also on every push). |
 | pandas-stubs | Type information for pandas, published by the pandas project: tells the type checker what each pandas call accepts and returns. | Correct type checks of pandas code (pyright, Pylance). |

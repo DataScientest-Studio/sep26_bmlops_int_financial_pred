@@ -115,6 +115,7 @@ source = { editable = "." }
 dependencies = [
     { name = "exchange-calendars" },
     { name = "fastapi" },
+    { name = "httpx2" },
     { name = "pandas" },
     { name = "psycopg", extra = ["binary"] },
     { name = "scikit-learn" },
@@ -124,7 +125,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx2" },
     { name = "pandas-stubs" },
     { name = "pyright", extra = ["nodejs"] },
     { name = "pytest" },
@@ -136,6 +136,7 @@ dev = [
 requires-dist = [
     { name = "exchange-calendars", specifier = ">=4.13.2" },
     { name = "fastapi", specifier = ">=0.143.0" },
+    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "pandas", specifier = ">=3.0.6" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.6" },
     { name = "scikit-learn", specifier = ">=1.9.1" },
@@ -145,7 +146,6 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx2", specifier = ">=2.13.1" },
     { name = "pandas-stubs", specifier = ">=3.0.5.260914" },
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.1.1" },

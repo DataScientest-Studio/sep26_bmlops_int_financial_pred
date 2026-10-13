@@ -44,7 +44,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The system loads the complete daily price history (open, high, low, close, volume) of each configured security and market index, and each security's splits and dividends, into its database in a single run. Prices and volumes are stored as traded on each day, not adjusted for later splits or dividends.
+**Statement**: The system loads the daily price history (open, high, low, close, volume) from a configured first day on of each configured security and market index, and each security's splits and dividends, into its database in a single run. Prices and volumes are stored as traded on each day, not adjusted for later splits or dividends.
 
 ### Daily ingestion
 
@@ -53,7 +53,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: The system adds the quotes of each new trading day to its database.
+**Statement**: The system adds the quotes of each new trading day to its database, fetching only the days from its latest stored quote on.
 
 ### Historical replay
 

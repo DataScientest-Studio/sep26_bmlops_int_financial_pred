@@ -7,7 +7,7 @@ Forecasts the next trading day's price change of a security and offers the forec
 Group project of the DataScientest MLOps bootcamp (sep26 cohort).
 
 ## Status
-Planning. The service is not built yet.
+Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`); training, forecasts and the app are not built yet.
 
 ## Project structure
 ```
@@ -19,7 +19,7 @@ Planning. The service is not built yet.
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
 ├── compose.yaml                 services run in Docker: the PostgreSQL database
-├── .env.example                 template for the local .env (database login, host, port, model folder)
+├── .env.example                 template for the local .env (database login, model folder, first day of history, EODHD key)
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
@@ -50,10 +50,12 @@ Planning. The service is not built yet.
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
+│   ├── commands.py              commands the Makefile runs (load)
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
+│   ├── eodhd.py                 the EODHD data source
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
@@ -62,6 +64,7 @@ Planning. The service is not built yet.
 │   └── api/                     FastAPI app, endpoints, request and response bodies
 ├── tests/
 │   ├── acceptance/              black-box tests, one or more per testable requirement
+│   ├── contract/                checks of how EODHD delivers data, run with your own key
 │   ├── unit/                    tests of single functions and the API wiring
 │   ├── conftest.py              shared fixtures: a test database per worker, API client
 │   └── fakes.py                 stand-in data source with generated prices
@@ -76,7 +79,10 @@ Needs [uv](https://docs.astral.sh/uv/), `make` and Docker with Compose. From a f
 cp .env.example .env      # then add your own free EODHD key; keep the development login
 make setup                # Python environment in .venv/
 make db                   # starts PostgreSQL, waits until it is ready
+make load                 # loads the price history from EODHD into the database
 ```
+
+After that, `make update` once a day adds the new trading days.
 
 `make setup` installs the Python version from `.python-version` if missing and creates `.venv/` with the packages pinned in `uv.lock`.
 
@@ -87,9 +93,11 @@ make db                   # starts PostgreSQL, waits until it is ready
 | `make db` | start the database |
 | `make db-stop` | stop it; the data is kept |
 | `make db-shell` | SQL prompt in the database |
+| `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
+| `make contract` | checks how EODHD delivers data, with your own key from `.env`; a check your key's history, remaining calls or plan cannot support is skipped with its reason |
 | `make api` | API on http://localhost:8000, documentation at `/docs` |
 
 `make db-shell` opens an SQL prompt (`\q` leaves it). For example, the latest day stored per security:

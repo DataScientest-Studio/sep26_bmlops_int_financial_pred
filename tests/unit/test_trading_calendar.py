@@ -15,10 +15,9 @@ from forecasting.trading_calendar import (
 
 def test_date_outside_the_calendar_raises():
     """A date outside the calendar's range raises, never guesses."""
-    # A real NYSE trading day, so only the range can cause the error; a past date,
-    # because the calendar's range moves forward and would catch up with a future one.
+    # A weekday before the calendar's first day, so only the range can cause the error:
     with pytest.raises(DateOutOfBounds):
-        is_trading_day("XNYS", date(1990, 1, 2))
+        is_trading_day("XNYS", date(1979, 12, 31))
 
 
 @pytest.mark.parametrize(

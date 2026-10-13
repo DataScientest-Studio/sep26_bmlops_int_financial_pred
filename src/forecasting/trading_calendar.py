@@ -1,12 +1,25 @@
 """Trading days of an exchange.
 
 Built on exchange_calendars; exchanges are named by their Market Identifier Code
-(MIC), for example XNYS for the New York Stock Exchange.
+(MIC), for example XNYS for the New York Stock Exchange. Each calendar covers the
+trading days from `CALENDAR_START` to about a year ahead.
 """
 
 from datetime import date, datetime, timedelta
 
 import exchange_calendars
+from exchange_calendars import ExchangeCalendar
+
+# The earliest day the system knows trading days for, so the earliest price it loads:
+CALENDAR_START = date(1980, 1, 2)
+
+
+def _calendar(exchange: str) -> ExchangeCalendar:
+    """Return the exchange's calendar from `CALENDAR_START` on.
+
+    The library builds each calendar once and caches it.
+    """
+    return exchange_calendars.get_calendar(exchange, start=CALENDAR_START)
 
 
 def is_trading_day(exchange: str, day: date) -> bool:
@@ -25,7 +38,7 @@ def is_trading_day(exchange: str, day: date) -> bool:
         exchange_calendars.errors.DateOutOfBounds: If `day` lies outside the calendar's
             range.
     """
-    calendar = exchange_calendars.get_calendar(exchange)
+    calendar = _calendar(exchange)
 
     return calendar.is_session(day)
 
@@ -47,7 +60,7 @@ def next_trading_day(exchange: str, day: date) -> date:
         exchange_calendars.errors.DateOutOfBounds: If the next trading day lies outside
             the calendar's range.
     """
-    calendar = exchange_calendars.get_calendar(exchange)
+    calendar = _calendar(exchange)
 
     return calendar.date_to_session(day + timedelta(days=1), direction="next").date()
 
@@ -69,7 +82,7 @@ def trading_days(exchange: str, start: date, end: date) -> list[date]:
         exchange_calendars.errors.DateOutOfBounds: If `start` or `end` lies outside the
             calendar's range.
     """
-    calendar = exchange_calendars.get_calendar(exchange)
+    calendar = _calendar(exchange)
 
     return [session.date() for session in calendar.sessions_in_range(start, end)]
 
@@ -90,6 +103,6 @@ def session_close(exchange: str, day: date) -> datetime:
         exchange_calendars.errors.NotSessionError: If `day` is not a trading day or lies
             outside the calendar's range.
     """
-    calendar = exchange_calendars.get_calendar(exchange)
+    calendar = _calendar(exchange)
 
     return calendar.session_close(day).to_pydatetime()

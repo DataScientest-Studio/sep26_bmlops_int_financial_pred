@@ -1,4 +1,4 @@
-.PHONY: setup requirements lint db db-stop db-shell test acceptance api
+.PHONY: setup requirements lint db db-stop db-shell load update test acceptance contract api
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
@@ -30,18 +30,29 @@ db-stop:
 db-shell:
 	docker compose exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
+# Loads prices, splits and dividends from EODHD with the key in .env: a security without
+# stored prices from HISTORY_START on, otherwise only the days from its latest stored
+# one on. Both names run the same load.
+update load:
+	uv run --env-file .env python -m forecasting.commands load
+
 # Tests see only the settings of .env.example: the shell's own variables are cleared,
 # apart from PATH and HOME, which uv needs.
 TEST_ENV = env -i PATH="$$PATH" HOME="$$HOME" uv run --env-file .env.example
 
-# Runs unit and integration tests in parallel; needs the database (make db) with the
-# login from .env.example.
+# Runs the unit tests in parallel; needs no database.
 test:
-	$(TEST_ENV) pytest -n auto -m "not acceptance"
+	$(TEST_ENV) pytest -n auto -m "not acceptance and not eodhd"
 
 # Runs the black-box tests of the requirements; the passed count shows progress.
 acceptance:
 	$(TEST_ENV) pytest -n auto -m acceptance
+
+# Checks how EODHD delivers data, with your own key from .env; a check your key's
+# history, remaining calls or plan cannot support is skipped with its reason. Short
+# tracebacks never show the key.
+contract:
+	uv run --env-file .env pytest -n auto -m eodhd --tb=short
 
 # Starts the API on http://localhost:8000 (docs at /docs).
 api:

@@ -1,6 +1,6 @@
 """Stand-ins for outside systems, so tests need no network."""
 
-from datetime import datetime
+from datetime import date, datetime
 
 import exchange_calendars
 import numpy as np
@@ -63,20 +63,26 @@ class FakeSource:
         self.fetched_at = fetched_at
         self.splits = splits or {}
         self.dividends = dividends or {}
+        self.starts: dict[str, date] = {}
 
-    def fetch_history(self, symbol: str) -> pd.DataFrame:
-        """Deliver the prepared history of one security.
+    def fetch_history(self, symbol: str, start: date) -> pd.DataFrame:
+        """Deliver the prepared history of one security from `start` on.
+
+        Each call records its start in `starts`, so tests see what was asked for.
 
         Args:
             symbol: Ticker of the security.
+            start: First day to deliver.
 
         Returns:
-            A copy of the prepared history, each row stamped with `fetched_at`.
+            A copy of the prepared days from `start` on, each stamped with `fetched_at`.
         """
-        history = self.histories[symbol].copy()
-        history["fetched_at"] = self.fetched_at
+        self.starts[symbol] = start
+        history = self.histories[symbol]
+        delivered = history[history["day"] >= start].copy()
+        delivered["fetched_at"] = self.fetched_at
 
-        return history
+        return delivered
 
     def fetch_splits(self, symbol: str) -> pd.DataFrame:
         """Deliver the prepared splits of one security.

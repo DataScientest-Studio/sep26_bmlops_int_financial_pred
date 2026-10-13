@@ -43,11 +43,12 @@ SAVE_DIVIDEND = text(
 class PriceSource(Protocol):
     """A data source of daily prices, splits and dividends."""
 
-    def fetch_history(self, symbol: str) -> pd.DataFrame:
-        """Fetch the complete daily price history of one security.
+    def fetch_history(self, symbol: str, start: date) -> pd.DataFrame:
+        """Fetch the daily price history of one security from a first day on.
 
         Args:
             symbol: Ticker of the security.
+            start: First day to deliver; the source may hold no earlier days anyway.
 
         Returns:
             One row per day with the columns in `forecasting.db.PRICE_COLUMNS`, as
@@ -266,20 +267,24 @@ def load_history(
     securities: tuple[Security, ...],
     indices: tuple[Security, ...],
     final_delay: timedelta,
+    history_start: date,
 ) -> LoadReport:
     """Load the prices of each security and index and each security's events in one run.
 
     Splits and dividends are fetched for securities only; a market index has none.
     Volumes are stored as traded: the source's correction for later splits is undone.
 
-    A day not yet stored is added. A stored quote that is still provisional is
-    replaced by a later fetch; a final quote is kept. So a repeated run adds
-    no duplicates and never changes a final close.
+    Each security's prices are asked for from its latest stored day on, or from
+    `history_start` while none is stored; the latest stored day comes again, so a
+    provisional close gets its final value. A day not yet stored is added. A stored
+    quote that is still provisional is replaced by a later fetch; a final quote is
+    kept. So a repeated run adds no duplicates and never changes a final close.
 
     Trading days without a delivered quote are counted as missing; they do not stop the
     load.
 
     @relation(REQ-DAT-001, scope=function)
+    @relation(REQ-DAT-002, scope=function)
     @relation(REQ-DAT-004, scope=function)
     @relation(REQ-DAT-005, scope=function)
     @relation(REQ-DAT-007, scope=function)
@@ -290,6 +295,8 @@ def load_history(
         securities: The securities to load.
         indices: The market indices to load.
         final_delay: Time after the exchange's close from which a quote is final.
+        history_start: First day of history asked for while a security has none
+            stored.
 
     Returns:
         How many quotes were stored and replaced, how many quotes and events were
@@ -311,7 +318,9 @@ def load_history(
             rejected += len(delivery) - len(valid)
             _save_events(connection, SAVE_DIVIDEND, symbol, valid)
         for security in (*securities, *indices):
-            delivery = source.fetch_history(security.symbol)
+            fetched = _stored_fetch_times(connection, security.symbol)
+            start = max(fetched, default=history_start)
+            delivery = source.fetch_history(security.symbol, start)
             valid = _valid_quotes(delivery, security.exchange)
             rejected += len(delivery) - len(valid)
             # A row without a day belongs to no day; it is only rejected:
@@ -321,7 +330,6 @@ def load_history(
             # wrong; indices have no splits and keep their volumes:
             splits_of_security = valid_splits.get(security.symbol, no_splits)
             valid = _traded_volumes(valid, splits_of_security, delivered)
-            fetched = _stored_fetch_times(connection, security.symbol)
             to_save = []
             for quote in valid[PRICE_COLUMNS].to_dict("records"):
                 day = quote["day"]

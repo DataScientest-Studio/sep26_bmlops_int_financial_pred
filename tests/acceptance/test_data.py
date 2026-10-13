@@ -39,10 +39,17 @@ def _last_row(engine, symbol: str) -> pd.Series:
     return _stored_rows(engine, symbol).iloc[-1]
 
 
-def test_load_stores_complete_history_of_each_security_and_index(engine, settings):
+def test_load_stores_the_history_of_each_security_and_index(engine, settings):
     """REQ-DAT-001: one run stores every delivered day of every security and index."""
     source = standard_source()
-    load_history(engine, source, SECURITIES, INDICES, settings.final_delay)
+    load_history(
+        engine,
+        source,
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
     for security in SECURITIES + INDICES:
         delivered = source.histories[security.symbol]
         stored = _stored_rows(engine, security.symbol)
@@ -62,7 +69,14 @@ def test_load_stores_splits_and_dividends_of_each_security(engine, settings):
         ),
     }
     source = standard_source(splits=splits, dividends=dividends)
-    load_history(engine, source, SECURITIES, INDICES, settings.final_delay)
+    load_history(
+        engine,
+        source,
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
     stored_splits = _stored_events(engine, "splits")
     stored_dividends = _stored_events(engine, "dividends")
     assert list(stored_splits["symbol"]) == ["TEST.US"]
@@ -71,6 +85,17 @@ def test_load_stores_splits_and_dividends_of_each_security(engine, settings):
     assert list(stored_dividends["symbol"]) == ["TEST.DE", "TEST.US"]
     assert list(stored_dividends["amount"].astype(float)) == [2.35, 0.25]
     assert list(stored_dividends["currency"]) == ["EUR", "USD"]
+
+
+def test_first_load_asks_from_the_configured_first_day(engine, settings):
+    """REQ-DAT-001: with nothing stored, the history is asked for from the first day."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    source = FakeSource({security.symbol: history})
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
+    assert source.starts[security.symbol] == settings.history_start
 
 
 def test_load_undoes_the_split_correction_of_volumes(engine, settings):
@@ -83,7 +108,9 @@ def test_load_undoes_the_split_correction_of_volumes(engine, settings):
         {"day": [date(2025, 2, 3), date(2025, 3, 3)], "ratio": [2.0, 3.0]}
     )
     source = FakeSource({security.symbol: history}, splits={security.symbol: splits})
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     volume = _stored_rows(engine, security.symbol).set_index("day")["volume"]
     assert volume[date(2025, 1, 2)] == 1_001  # both splits undone: 6_004 / 6, rounded
     assert volume[date(2025, 2, 3)] == 2_000  # only the March split undone
@@ -96,7 +123,9 @@ def test_load_keeps_volumes_of_a_split_after_the_last_delivered_day(engine, sett
     history["volume"] = 6_000
     splits = pd.DataFrame({"day": [date(2025, 4, 1)], "ratio": [0.05]})
     source = FakeSource({security.symbol: history}, splits={security.symbol: splits})
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     volume = _stored_rows(engine, security.symbol)["volume"]
     assert list(volume) == [6_000] * len(history)
 
@@ -109,9 +138,28 @@ def test_load_undoes_a_split_on_the_last_delivered_day(engine, settings):
     history.loc[history.index[-1], "open"] = 0.0
     splits = pd.DataFrame({"day": [date(2025, 3, 31)], "ratio": [2.0]})
     source = FakeSource({security.symbol: history}, splits={security.symbol: splits})
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     volume = _stored_rows(engine, security.symbol)["volume"]
     assert list(volume) == [3_000] * (len(history) - 1)  # the split day is rejected
+
+
+def test_update_asks_from_the_latest_stored_day(engine, settings):
+    """REQ-DAT-002: a later run asks only for the days from the latest stored one on."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    source = FakeSource({security.symbol: history})
+    for _ in range(2):
+        load_history(
+            engine,
+            source,
+            (security,),
+            (),
+            settings.final_delay,
+            settings.history_start,
+        )
+    assert source.starts[security.symbol] == date(2025, 3, 31)
 
 
 def test_missing_trading_days_are_counted(engine, settings):
@@ -120,7 +168,9 @@ def test_missing_trading_days_are_counted(engine, settings):
     history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
     history = history.drop(index=20)
     source = FakeSource({security.symbol: history})
-    report = load_history(engine, source, (security,), (), settings.final_delay)
+    report = load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     assert report.missing == 1
 
 
@@ -133,7 +183,9 @@ def test_invalid_quotes_are_rejected_and_counted(engine, settings):
     history.loc[5, "open"] = -1.0
     history = pd.concat([history, history.iloc[[10]]], ignore_index=True)
     source = FakeSource({security.symbol: history})
-    report = load_history(engine, source, (security,), (), settings.final_delay)
+    report = load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     stored = _stored_rows(engine, security.symbol)
     assert report.rejected == 3
     assert len(stored) == valid_days - 2
@@ -148,7 +200,9 @@ def test_negative_volume_and_closed_days_are_rejected_and_counted(engine, settin
     saturday = history.iloc[[10]].assign(day=date(2025, 1, 4))
     history = pd.concat([history, saturday], ignore_index=True)
     source = FakeSource({security.symbol: history})
-    report = load_history(engine, source, (security,), (), settings.final_delay)
+    report = load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     stored = _stored_rows(engine, security.symbol)
     assert report.rejected == 2
     assert len(stored) == valid_days - 1
@@ -186,7 +240,9 @@ def test_invalid_splits_and_dividends_are_rejected_and_counted(engine, settings)
         splits={security.symbol: splits},
         dividends={security.symbol: dividends},
     )
-    report = load_history(engine, source, (security,), (), settings.final_delay)
+    report = load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     stored_splits = _stored_events(engine, "splits")
     stored_dividends = _stored_events(engine, "dividends")
     assert report.rejected == 6
@@ -202,10 +258,14 @@ def test_provisional_close_is_replaced_by_a_later_fetch(engine, settings):
     final_from = session_close(security.exchange, date(2025, 12, 30))
     final_from += settings.final_delay
     source = FakeSource({security.symbol: history}, final_from - timedelta(hours=1))
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     history.loc[history.index[-1], "close"] += 1.0
     source.fetched_at = final_from
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     latest = _last_row(engine, security.symbol)
     assert float(latest["close"]) == pytest.approx(history["close"].iloc[-1])
     assert latest["fetched_at"] == final_from
@@ -220,10 +280,14 @@ def test_older_fetch_does_not_replace_a_newer_provisional_close(engine, settings
     final_from += settings.final_delay
     newer = final_from - timedelta(hours=1)
     source = FakeSource({security.symbol: history}, newer)
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     older = history.assign(close=history["close"] + 1.0)
     source = FakeSource({security.symbol: older}, newer - timedelta(hours=1))
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     latest = _last_row(engine, security.symbol)
     assert float(latest["close"]) == pytest.approx(newer_close)
     assert latest["fetched_at"] == newer
@@ -237,10 +301,14 @@ def test_final_close_is_never_replaced(engine, settings):
     final_from = session_close(security.exchange, date(2025, 12, 30))
     final_from += settings.final_delay
     source = FakeSource({security.symbol: history}, final_from)
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     history.loc[history.index[-1], "close"] += 1.0
     source.fetched_at = final_from + timedelta(days=1)
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     latest = _last_row(engine, security.symbol)
     assert float(latest["close"]) == pytest.approx(first_close)
     assert latest["fetched_at"] == final_from
@@ -254,10 +322,14 @@ def test_early_close_makes_a_quote_final_sooner(engine, settings):
     final_from = session_close(security.exchange, date(2025, 11, 28))
     final_from += settings.final_delay
     source = FakeSource({security.symbol: history}, final_from)
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     history.loc[history.index[-1], "close"] += 1.0
     source.fetched_at = final_from + timedelta(days=3)
-    load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
     assert float(_last_row(engine, security.symbol)["close"]) == pytest.approx(
         first_close
     )
