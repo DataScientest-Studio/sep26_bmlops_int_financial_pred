@@ -134,9 +134,9 @@ UID: REQ-DAT-005
 STATUS: Draft
 TAGS: phase-1
 VERIFICATION: Test
-TITLE: Quote validation
+TITLE: Validation of delivered data
 STATEMENT: >>>
-The system rejects a quote with a missing field, a non-positive price or a trading day delivered twice in one delivery before it is stored, and records the rejection.
+The system rejects a delivered quote, split or dividend with a missing field, a non-positive price, ratio or amount, or a day delivered twice in one delivery before it is stored, and records the rejection.
 <<<
 
 [REQUIREMENT]

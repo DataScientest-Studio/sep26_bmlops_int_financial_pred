@@ -24,7 +24,9 @@ Planning. The service is not built yet.
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
 │   ├── init/
-│   │   └── prices.sql           creates the prices table on the database's first start
+│   │   ├── dividends.sql        creates the dividends table on the database's first start
+│   │   ├── prices.sql           creates the prices table on the database's first start
+│   │   └── splits.sql           creates the splits table on the database's first start
 │   └── queries/
 │       ├── examples.sql         example queries on the prices table
 │       ├── sample-data.sql      made-up prices for trying them
@@ -51,7 +53,7 @@ Planning. The service is not built yet.
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices
 │   ├── trading_calendar.py      trading days of each exchange
-│   ├── load.py                  loading prices from a data source
+│   ├── load.py                  loading prices, splits and dividends from a data source
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
@@ -78,7 +80,7 @@ make db                   # starts PostgreSQL, waits until it is ready
 
 `make setup` installs the Python version from `.python-version` if missing and creates `.venv/` with the packages pinned in `uv.lock`.
 
-`make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The `prices` table is created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
+`make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
 
 | Command | Effect |
 |---|---|

@@ -5,10 +5,10 @@ from datetime import date, datetime, timedelta
 from typing import Protocol
 
 import pandas as pd
-from sqlalchemy import Connection, Engine, text
+from sqlalchemy import Connection, Engine, TextClause, text
 
 from forecasting.config import Security
-from forecasting.db import PRICE_COLUMNS
+from forecasting.db import DIVIDEND_COLUMNS, PRICE_COLUMNS, SPLIT_COLUMNS
 from forecasting.trading_calendar import session_close
 
 SAVE_QUOTE = text(
@@ -23,9 +23,25 @@ SAVE_QUOTE = text(
     """
 )
 
+SAVE_SPLIT = text(
+    """
+    INSERT INTO splits (symbol, day, ratio) VALUES (:symbol, :day, :ratio)
+    ON CONFLICT (symbol, day) DO UPDATE SET ratio = EXCLUDED.ratio
+    """
+)
+
+SAVE_DIVIDEND = text(
+    """
+    INSERT INTO dividends (symbol, day, amount, currency)
+    VALUES (:symbol, :day, :amount, :currency)
+    ON CONFLICT (symbol, day) DO UPDATE SET
+        amount = EXCLUDED.amount, currency = EXCLUDED.currency
+    """
+)
+
 
 class PriceSource(Protocol):
-    """A data source of daily prices."""
+    """A data source of daily prices, splits and dividends."""
 
     def fetch_history(self, symbol: str) -> pd.DataFrame:
         """Fetch the complete daily price history of one security.
@@ -40,6 +56,32 @@ class PriceSource(Protocol):
         """
         ...
 
+    def fetch_splits(self, symbol: str) -> pd.DataFrame:
+        """Fetch all splits of one security.
+
+        Args:
+            symbol: Ticker of the security.
+
+        Returns:
+            One row per split with the columns in `forecasting.db.SPLIT_COLUMNS`:
+            `day` as `datetime.date`, `ratio` as new shares per old share (4.0 for
+            a 4-for-1 split).
+        """
+        ...
+
+    def fetch_dividends(self, symbol: str) -> pd.DataFrame:
+        """Fetch all dividends of one security.
+
+        Args:
+            symbol: Ticker of the security.
+
+        Returns:
+            One row per dividend with the columns in `forecasting.db.DIVIDEND_COLUMNS`:
+            `day` as `datetime.date`, `amount` as paid per share, `currency` as its
+            code (`USD`).
+        """
+        ...
+
 
 @dataclass(frozen=True)
 class LoadReport:
@@ -48,7 +90,7 @@ class LoadReport:
     Attributes:
         stored: Number of quotes of new days written to the database.
         replaced: Number of provisional quotes overwritten by a later fetch.
-        rejected: Number of quotes refused by validation.
+        rejected: Number of quotes, splits and dividends refused by validation.
     """
 
     stored: int
@@ -89,26 +131,30 @@ def _final_from(exchange: str, day: date, final_delay: timedelta) -> datetime:
     return session_close(exchange, day) + final_delay
 
 
-def _valid_quotes(delivery: pd.DataFrame) -> pd.DataFrame:
-    """Keep the quotes that pass validation.
+def _valid_rows(
+    delivery: pd.DataFrame, columns: list[str], positive: list[str]
+) -> pd.DataFrame:
+    """Keep the rows that pass validation.
 
-    A quote is refused if a field is missing, a price is zero or below, or its day
-    was already delivered earlier in the same delivery.
+    A row is refused if a field is missing, a value that must be positive is zero or
+    below, or its day was already delivered earlier in the same delivery.
 
     Args:
-        delivery: Quotes of one security, as the source delivered them.
+        delivery: Rows of one security, as the source delivered them.
+        columns: The fields every row must have.
+        positive: The fields that must be above zero.
 
     Returns:
-        The valid quotes, in delivered order.
+        The valid rows, in delivered order.
     """
     # Each line gives one True/False value per row. True where no field is empty:
-    complete = delivery[PRICE_COLUMNS].notna().all(axis="columns")
-    # True where all four prices are above zero; an empty price compares as False:
-    positive = (delivery[["open", "high", "low", "close"]] > 0).all(axis="columns")
+    complete = delivery[columns].notna().all(axis="columns")
+    # True where all those values are above zero; an empty value compares as False:
+    above_zero = (delivery[positive] > 0).all(axis="columns")
     # duplicated() marks the second and later rows of a day; ~ turns that around:
     first_of_day = ~delivery["day"].duplicated()
 
-    return delivery[complete & positive & first_of_day]
+    return delivery[complete & above_zero & first_of_day]
 
 
 def _stored_fetch_times(connection: Connection, symbol: str) -> dict[date, datetime]:
@@ -127,6 +173,15 @@ def _stored_fetch_times(connection: Connection, symbol: str) -> dict[date, datet
     return {day: fetched_at for day, fetched_at in result}
 
 
+def _save_events(
+    connection: Connection, statement: TextClause, symbol: str, events: pd.DataFrame
+) -> None:
+    """Write the splits or dividends of one security; a stored one is replaced."""
+    rows = [{**event, "symbol": symbol} for event in events.to_dict("records")]
+    if rows:
+        connection.execute(statement, rows)
+
+
 def load_history(
     engine: Engine,
     source: PriceSource,
@@ -134,7 +189,9 @@ def load_history(
     indices: tuple[Security, ...],
     final_delay: timedelta,
 ) -> LoadReport:
-    """Load the complete price history of each security and index in one run.
+    """Load the prices of each security and index and each security's events in one run.
+
+    Splits and dividends are fetched for securities only; a market index has none.
 
     A day not yet stored is added. A stored quote that is still provisional is
     replaced by a later fetch; a final quote is kept. So a repeated run adds
@@ -146,19 +203,32 @@ def load_history(
 
     Args:
         engine: Engine of the project database.
-        source: Where the prices come from.
+        source: Where the prices, splits and dividends come from.
         securities: The securities to load.
         indices: The market indices to load.
         final_delay: Time after the exchange's close from which a quote is final.
 
     Returns:
-        How many quotes were stored, replaced and rejected.
+        How many quotes were stored and replaced, and how many quotes and events were
+        rejected.
     """
     stored = replaced = rejected = 0
     with engine.begin() as connection:
+        splits = {s.symbol: source.fetch_splits(s.symbol) for s in securities}
+        dividends = {s.symbol: source.fetch_dividends(s.symbol) for s in securities}
+        for symbol, delivery in splits.items():
+            valid = _valid_rows(delivery, SPLIT_COLUMNS, ["ratio"])
+            rejected += len(delivery) - len(valid)
+            _save_events(connection, SAVE_SPLIT, symbol, valid)
+        for symbol, delivery in dividends.items():
+            valid = _valid_rows(delivery, DIVIDEND_COLUMNS, ["amount"])
+            rejected += len(delivery) - len(valid)
+            _save_events(connection, SAVE_DIVIDEND, symbol, valid)
         for security in (*securities, *indices):
             delivery = source.fetch_history(security.symbol)
-            valid = _valid_quotes(delivery)
+            valid = _valid_rows(
+                delivery, PRICE_COLUMNS, ["open", "high", "low", "close"]
+            )
             rejected += len(delivery) - len(valid)
             fetched = _stored_fetch_times(connection, security.symbol)
             to_save = []

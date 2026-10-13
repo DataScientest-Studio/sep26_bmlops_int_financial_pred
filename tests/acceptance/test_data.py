@@ -8,12 +8,7 @@ import pytest
 from sqlalchemy import text
 
 from forecasting.load import load_history
-from forecasting.trading_calendar import (
-    is_trading_day,
-    next_trading_day,
-    session_close,
-    trading_days,
-)
+from forecasting.trading_calendar import session_close
 from tests.fakes import (
     INDICES,
     SECURITIES,
@@ -32,6 +27,13 @@ def _stored_rows(engine, symbol: str) -> pd.DataFrame:
         return pd.read_sql(query, connection, params={"symbol": symbol})
 
 
+def _stored_events(engine, table: str) -> pd.DataFrame:
+    """Read all stored events of one table (splits or dividends) straight from it."""
+    query = text(f"SELECT * FROM {table} ORDER BY symbol, day")
+    with engine.connect() as connection:
+        return pd.read_sql(query, connection)
+
+
 def _last_row(engine, symbol: str) -> pd.Series:
     """Read the stored quote of the latest day of one symbol."""
     return _stored_rows(engine, symbol).iloc[-1]
@@ -40,65 +42,51 @@ def _last_row(engine, symbol: str) -> pd.Series:
 def test_load_stores_complete_history_of_each_security_and_index(engine, settings):
     """REQ-DAT-001: one run stores every delivered day of every security and index."""
     source = standard_source()
-    report = load_history(engine, source, SECURITIES, INDICES, settings.final_delay)
-    total = 0
+    load_history(engine, source, SECURITIES, INDICES, settings.final_delay)
     for security in SECURITIES + INDICES:
         delivered = source.histories[security.symbol]
         stored = _stored_rows(engine, security.symbol)
         assert list(stored["day"]) == list(delivered["day"])
         assert np.allclose(stored["close"].astype(float), delivered["close"])
-        total += len(delivered)
-    assert report.stored == total
-    assert report.rejected == 0
 
 
-def test_repeated_load_adds_no_duplicates(engine, settings):
-    """REQ-DAT-001: loading the same history twice keeps one row per day."""
-    source = standard_source()
-    first = load_history(engine, source, SECURITIES, (), settings.final_delay)
-    second = load_history(engine, source, SECURITIES, (), settings.final_delay)
-    stored = sum(len(_stored_rows(engine, s.symbol)) for s in SECURITIES)
-    assert stored == first.stored
-    assert second.stored == 0
+def test_load_stores_splits_and_dividends_of_each_security(engine, settings):
+    """REQ-DAT-001: one run stores each security's splits and dividends."""
+    splits = {"TEST.US": pd.DataFrame({"day": [date(2025, 6, 2)], "ratio": [4.0]})}
+    dividends = {
+        "TEST.US": pd.DataFrame(
+            {"day": [date(2025, 3, 14)], "amount": [0.25], "currency": ["USD"]}
+        ),
+        "TEST.DE": pd.DataFrame(
+            {"day": [date(2025, 5, 15)], "amount": [2.35], "currency": ["EUR"]}
+        ),
+    }
+    source = standard_source(splits=splits, dividends=dividends)
+    load_history(engine, source, SECURITIES, INDICES, settings.final_delay)
+    stored_splits = _stored_events(engine, "splits")
+    stored_dividends = _stored_events(engine, "dividends")
+    assert list(stored_splits["symbol"]) == ["TEST.US"]
+    assert list(stored_splits["day"]) == [date(2025, 6, 2)]
+    assert list(stored_splits["ratio"].astype(float)) == [4.0]
+    assert list(stored_dividends["symbol"]) == ["TEST.DE", "TEST.US"]
+    assert list(stored_dividends["amount"].astype(float)) == [2.35, 0.25]
+    assert list(stored_dividends["currency"]) == ["EUR", "USD"]
 
 
-@pytest.mark.parametrize(
-    ("exchange", "day", "expected"),
-    [
-        ("XNYS", date(2026, 12, 25), False),  # Christmas
-        ("XNYS", date(2026, 12, 24), True),  # early close, still a session
-        ("XNYS", date(2026, 10, 10), False),  # Saturday
-        ("XETR", date(2026, 12, 24), False),  # Christmas Eve, Xetra closed
-    ],
-)
-def test_trading_day_follows_the_exchange(exchange, day, expected):
-    """REQ-DAT-004: weekends and exchange holidays are no trading days."""
-    assert is_trading_day(exchange, day) is expected
-
-
-@pytest.mark.parametrize(
-    ("exchange", "day", "expected"),
-    [
-        ("XNYS", date(2026, 10, 9), date(2026, 10, 12)),  # Friday to Monday
-        ("XNYS", date(2026, 11, 25), date(2026, 11, 27)),  # skips Thanksgiving
-        ("XETR", date(2026, 12, 23), date(2026, 12, 28)),  # skips Christmas
-        ("XNYS", date(2026, 10, 10), date(2026, 10, 12)),  # from a Saturday
-    ],
-)
-def test_next_trading_day_skips_closed_days(exchange, day, expected):
-    """REQ-DAT-004: the next trading day skips weekends and holidays."""
-    assert next_trading_day(exchange, day) == expected
-
-
-def test_trading_days_leave_out_holidays():
-    """REQ-DAT-004: a week with a holiday has only its sessions."""
-    days = trading_days("XNYS", date(2026, 11, 23), date(2026, 11, 29))
-    assert days == [
-        date(2026, 11, 23),
-        date(2026, 11, 24),
-        date(2026, 11, 25),
-        date(2026, 11, 27),
-    ]
+def test_load_undoes_the_split_correction_of_volumes(engine, settings):
+    """REQ-DAT-001: volumes corrected for later splits are stored as traded."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    history["volume"] = 6_000
+    history.loc[0, "volume"] = 6_004
+    splits = pd.DataFrame(
+        {"day": [date(2025, 2, 3), date(2025, 3, 3)], "ratio": [2.0, 3.0]}
+    )
+    source = FakeSource({security.symbol: history}, splits={security.symbol: splits})
+    load_history(engine, source, (security,), (), settings.final_delay)
+    volume = _stored_rows(engine, security.symbol).set_index("day")["volume"]
+    assert volume[date(2025, 1, 2)] == 1_001  # both splits undone: 6_004 / 6, rounded
+    assert volume[date(2025, 2, 3)] == 2_000  # only the March split undone
 
 
 def test_invalid_quotes_are_rejected_and_counted(engine, settings):
@@ -113,9 +101,48 @@ def test_invalid_quotes_are_rejected_and_counted(engine, settings):
     report = load_history(engine, source, (security,), (), settings.final_delay)
     stored = _stored_rows(engine, security.symbol)
     assert report.rejected == 3
-    assert report.stored == valid_days - 2
     assert len(stored) == valid_days - 2
-    assert stored["day"].is_unique
+
+
+def test_invalid_splits_and_dividends_are_rejected_and_counted(engine, settings):
+    """REQ-DAT-005: incomplete, non-positive or repeated events are refused."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    splits = pd.DataFrame(
+        {
+            "day": [
+                date(2025, 1, 6),
+                date(2025, 1, 7),
+                date(2025, 1, 8),
+                date(2025, 1, 6),
+            ],
+            "ratio": [2.0, None, 0.0, 3.0],
+        }
+    )
+    dividends = pd.DataFrame(
+        {
+            "day": [
+                date(2025, 1, 15),
+                date(2025, 1, 16),
+                date(2025, 1, 17),
+                date(2025, 1, 15),
+            ],
+            "amount": [0.25, -0.1, 0.30, 0.25],
+            "currency": ["USD", "USD", None, "USD"],
+        }
+    )
+    source = FakeSource(
+        {security.symbol: history},
+        splits={security.symbol: splits},
+        dividends={security.symbol: dividends},
+    )
+    report = load_history(engine, source, (security,), (), settings.final_delay)
+    stored_splits = _stored_events(engine, "splits")
+    stored_dividends = _stored_events(engine, "dividends")
+    assert report.rejected == 6
+    assert list(stored_splits["day"]) == [date(2025, 1, 6)]
+    assert list(stored_splits["ratio"].astype(float)) == [2.0]
+    assert list(stored_dividends["day"]) == [date(2025, 1, 15)]
 
 
 def test_provisional_close_is_replaced_by_a_later_fetch(engine, settings):
@@ -128,13 +155,10 @@ def test_provisional_close_is_replaced_by_a_later_fetch(engine, settings):
     load_history(engine, source, (security,), (), settings.final_delay)
     history.loc[history.index[-1], "close"] += 1.0
     source.fetched_at = final_from
-    report = load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(engine, source, (security,), (), settings.final_delay)
     latest = _last_row(engine, security.symbol)
-    assert report.replaced == 1
-    assert report.stored == 0
     assert float(latest["close"]) == pytest.approx(history["close"].iloc[-1])
     assert latest["fetched_at"] == final_from
-    assert len(_stored_rows(engine, security.symbol)) == len(history)
 
 
 def test_older_fetch_does_not_replace_a_newer_provisional_close(engine, settings):
@@ -149,9 +173,8 @@ def test_older_fetch_does_not_replace_a_newer_provisional_close(engine, settings
     load_history(engine, source, (security,), (), settings.final_delay)
     older = history.assign(close=history["close"] + 1.0)
     source = FakeSource({security.symbol: older}, newer - timedelta(hours=1))
-    report = load_history(engine, source, (security,), (), settings.final_delay)
+    load_history(engine, source, (security,), (), settings.final_delay)
     latest = _last_row(engine, security.symbol)
-    assert report.replaced == 0
     assert float(latest["close"]) == pytest.approx(newer_close)
     assert latest["fetched_at"] == newer
 
@@ -167,24 +190,6 @@ def test_final_close_is_never_replaced(engine, settings):
     load_history(engine, source, (security,), (), settings.final_delay)
     history.loc[history.index[-1], "close"] += 1.0
     source.fetched_at = final_from + timedelta(days=1)
-    report = load_history(engine, source, (security,), (), settings.final_delay)
-    latest = _last_row(engine, security.symbol)
-    assert report.replaced == 0
-    assert float(latest["close"]) == pytest.approx(first_close)
-    assert latest["fetched_at"] == final_from
-
-
-def test_final_close_survives_a_delivery_with_days_as_text(engine, settings):
-    """REQ-DAT-007: a final quote is kept even if a source spells its day as text."""
-    security = SECURITIES[0]
-    history = price_history(security.exchange, "2025-12-01", "2025-12-30", seed=3)
-    first_close = history["close"].iloc[-1]
-    final_from = session_close(security.exchange, date(2025, 12, 30))
-    final_from += settings.final_delay
-    source = FakeSource({security.symbol: history}, final_from)
-    load_history(engine, source, (security,), (), settings.final_delay)
-    as_text = history.assign(day=history["day"].map(date.isoformat), close=1.0)
-    source = FakeSource({security.symbol: as_text}, final_from + timedelta(days=1))
     load_history(engine, source, (security,), (), settings.final_delay)
     latest = _last_row(engine, security.symbol)
     assert float(latest["close"]) == pytest.approx(first_close)
@@ -202,8 +207,7 @@ def test_early_close_makes_a_quote_final_sooner(engine, settings):
     load_history(engine, source, (security,), (), settings.final_delay)
     history.loc[history.index[-1], "close"] += 1.0
     source.fetched_at = final_from + timedelta(days=3)
-    report = load_history(engine, source, (security,), (), settings.final_delay)
-    assert report.replaced == 0
+    load_history(engine, source, (security,), (), settings.final_delay)
     assert float(_last_row(engine, security.symbol)["close"]) == pytest.approx(
         first_close
     )

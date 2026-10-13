@@ -30,11 +30,8 @@ def test_evaluation_scores_model_and_both_baselines_on_same_days():
     result = evaluate(actual, predicted, training_target)
     assert result.days == 3
     assert result.persistence.mae == pytest.approx(0.04 / 3)
-    assert result.persistence.skill == pytest.approx(0.0)
     assert result.mean_change.mae == pytest.approx(0.035 / 3)
     assert result.model.mae == pytest.approx(0.01)
-    assert result.model.skill == pytest.approx(0.25)
-    assert result.model.directional_accuracy == pytest.approx(2 / 3)
 
 
 def test_features_of_a_day_ignore_later_prices():

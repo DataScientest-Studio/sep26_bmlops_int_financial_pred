@@ -1,15 +1,20 @@
-"""Trading calendar behaviour the acceptance tests do not cover."""
+"""Unit tests of the trading calendar."""
 
 from datetime import date, datetime
 
 import pytest
 from exchange_calendars.errors import DateOutOfBounds
 
-from forecasting.trading_calendar import is_trading_day, session_close
+from forecasting.trading_calendar import (
+    is_trading_day,
+    next_trading_day,
+    session_close,
+    trading_days,
+)
 
 
 def test_date_outside_the_calendar_raises():
-    """REQ-DAT-004: a date outside the calendar's range raises, never guesses."""
+    """A date outside the calendar's range raises, never guesses."""
     # A real NYSE trading day, so only the range can cause the error; a past date,
     # because the calendar's range moves forward and would catch up with a future one.
     with pytest.raises(DateOutOfBounds):
@@ -26,5 +31,44 @@ def test_date_outside_the_calendar_raises():
     ],
 )
 def test_session_close_is_the_exchange_close_in_utc(exchange, day, expected):
-    """REQ-DAT-007: the close of that day's session, early closes included."""
+    """The close of that day's session, early closes included."""
     assert session_close(exchange, day) == datetime.fromisoformat(expected)
+
+
+@pytest.mark.parametrize(
+    ("exchange", "day", "expected"),
+    [
+        ("XNYS", date(2026, 12, 25), False),  # Christmas
+        ("XNYS", date(2026, 12, 24), True),  # early close, still a session
+        ("XNYS", date(2026, 10, 10), False),  # Saturday
+        ("XETR", date(2026, 12, 24), False),  # Christmas Eve, Xetra closed
+    ],
+)
+def test_trading_day_follows_the_exchange(exchange, day, expected):
+    """Weekends and exchange holidays are no trading days."""
+    assert is_trading_day(exchange, day) is expected
+
+
+@pytest.mark.parametrize(
+    ("exchange", "day", "expected"),
+    [
+        ("XNYS", date(2026, 10, 9), date(2026, 10, 12)),  # Friday to Monday
+        ("XNYS", date(2026, 11, 25), date(2026, 11, 27)),  # skips Thanksgiving
+        ("XETR", date(2026, 12, 23), date(2026, 12, 28)),  # skips Christmas
+        ("XNYS", date(2026, 10, 10), date(2026, 10, 12)),  # from a Saturday
+    ],
+)
+def test_next_trading_day_skips_closed_days(exchange, day, expected):
+    """The next trading day skips weekends and holidays."""
+    assert next_trading_day(exchange, day) == expected
+
+
+def test_trading_days_leave_out_holidays():
+    """A week with a holiday has only its sessions."""
+    days = trading_days("XNYS", date(2026, 11, 23), date(2026, 11, 29))
+    assert days == [
+        date(2026, 11, 23),
+        date(2026, 11, 24),
+        date(2026, 11, 25),
+        date(2026, 11, 27),
+    ]

@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 
 from forecasting.config import Security
+from forecasting.db import DIVIDEND_COLUMNS, SPLIT_COLUMNS
 
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
 INDICES = (Security("TEST.INDX", "XNYS"),)
@@ -44,16 +45,24 @@ class FakeSource:
     """A data source that delivers prepared price histories."""
 
     def __init__(
-        self, histories: dict[str, pd.DataFrame], fetched_at: datetime = FETCHED_AT
+        self,
+        histories: dict[str, pd.DataFrame],
+        fetched_at: datetime = FETCHED_AT,
+        splits: dict[str, pd.DataFrame] | None = None,
+        dividends: dict[str, pd.DataFrame] | None = None,
     ) -> None:
-        """Keep the histories to deliver and the fetch time to stamp on them.
+        """Keep the histories and events to deliver and the fetch time to stamp on them.
 
         Args:
             histories: Price history per ticker.
             fetched_at: Time the fetch takes place (UTC); tests move it between loads.
+            splits: Splits per ticker; a ticker without an entry has none.
+            dividends: Dividends per ticker; a ticker without an entry has none.
         """
         self.histories = histories
         self.fetched_at = fetched_at
+        self.splits = splits or {}
+        self.dividends = dividends or {}
 
     def fetch_history(self, symbol: str) -> pd.DataFrame:
         """Deliver the prepared history of one security.
@@ -69,12 +78,39 @@ class FakeSource:
 
         return history
 
+    def fetch_splits(self, symbol: str) -> pd.DataFrame:
+        """Deliver the prepared splits of one security.
 
-def standard_source() -> FakeSource:
+        Args:
+            symbol: Ticker of the security.
+
+        Returns:
+            A copy of the prepared splits, empty if there are none.
+        """
+        return self.splits.get(symbol, pd.DataFrame(columns=SPLIT_COLUMNS)).copy()
+
+    def fetch_dividends(self, symbol: str) -> pd.DataFrame:
+        """Deliver the prepared dividends of one security.
+
+        Args:
+            symbol: Ticker of the security.
+
+        Returns:
+            A copy of the prepared dividends, empty if there are none.
+        """
+        return self.dividends.get(symbol, pd.DataFrame(columns=DIVIDEND_COLUMNS)).copy()
+
+
+def standard_source(
+    splits: dict[str, pd.DataFrame] | None = None,
+    dividends: dict[str, pd.DataFrame] | None = None,
+) -> FakeSource:
     """Deliver about a year of valid prices for each test security and index."""
     return FakeSource(
         {
             s.symbol: price_history(s.exchange, "2025-01-01", "2025-12-31", seed=i)
             for i, s in enumerate(SECURITIES + INDICES)
-        }
+        },
+        splits=splits,
+        dividends=dividends,
     )

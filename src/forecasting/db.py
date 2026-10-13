@@ -4,6 +4,8 @@ import pandas as pd
 from sqlalchemy import Engine, create_engine
 
 PRICE_COLUMNS = ["day", "open", "high", "low", "close", "volume", "fetched_at"]
+SPLIT_COLUMNS = ["day", "ratio"]
+DIVIDEND_COLUMNS = ["day", "amount", "currency"]
 
 
 def connect(database_url: str) -> Engine:

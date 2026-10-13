@@ -75,14 +75,14 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 **Statement**: The system counts only trading days of the security's exchange; weekends, public holidays and trading suspensions are not treated as missing data.
 
-### Quote validation
+### Validation of delivered data
 
 **UID**: REQ-DAT-005 \
 **Status**: Draft \
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The system rejects a quote with a missing field, a non-positive price or a trading day delivered twice in one delivery before it is stored, and records the rejection.
+**Statement**: The system rejects a delivered quote, split or dividend with a missing field, a non-positive price, ratio or amount, or a day delivered twice in one delivery before it is stored, and records the rejection.
 
 ### Dataset versioning
 
