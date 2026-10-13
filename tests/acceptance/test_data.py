@@ -89,6 +89,31 @@ def test_load_undoes_the_split_correction_of_volumes(engine, settings):
     assert volume[date(2025, 2, 3)] == 2_000  # only the March split undone
 
 
+def test_load_keeps_volumes_of_a_split_after_the_last_delivered_day(engine, settings):
+    """REQ-DAT-001: a split announced for a later day leaves the volumes as traded."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    history["volume"] = 6_000
+    splits = pd.DataFrame({"day": [date(2025, 4, 1)], "ratio": [0.05]})
+    source = FakeSource({security.symbol: history}, splits={security.symbol: splits})
+    load_history(engine, source, (security,), (), settings.final_delay)
+    volume = _stored_rows(engine, security.symbol)["volume"]
+    assert list(volume) == [6_000] * len(history)
+
+
+def test_load_undoes_a_split_on_the_last_delivered_day(engine, settings):
+    """REQ-DAT-001: a split counts from its delivered day, even a refused one."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    history["volume"] = 6_000
+    history.loc[history.index[-1], "open"] = 0.0
+    splits = pd.DataFrame({"day": [date(2025, 3, 31)], "ratio": [2.0]})
+    source = FakeSource({security.symbol: history}, splits={security.symbol: splits})
+    load_history(engine, source, (security,), (), settings.final_delay)
+    volume = _stored_rows(engine, security.symbol)["volume"]
+    assert list(volume) == [3_000] * (len(history) - 1)  # the split day is rejected
+
+
 def test_missing_trading_days_are_counted(engine, settings):
     """REQ-DAT-004: only trading days without a quote count as missing."""
     security = SECURITIES[0]

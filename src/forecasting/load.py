@@ -66,7 +66,8 @@ class PriceSource(Protocol):
         Returns:
             One row per split with the columns in `forecasting.db.SPLIT_COLUMNS`:
             `day` as plain `datetime.date`, never a `datetime` or `pandas.Timestamp`;
-            `ratio` as new shares per old share (4.0 for a 4-for-1 split).
+            `ratio` as new shares per old share (4.0 for a 4-for-1 split). The list
+            may hold a split announced for a later day.
         """
         ...
 
@@ -184,28 +185,35 @@ def _valid_quotes(delivery: pd.DataFrame, exchange: str) -> pd.DataFrame:
     return valid[traded & on_trading_day]
 
 
-def _traded_volumes(quotes: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
+def _traded_volumes(
+    quotes: pd.DataFrame, splits: pd.DataFrame, delivered: set[date]
+) -> pd.DataFrame:
     """Undo the source's correction of volumes for later splits.
 
-    The source multiplies each volume by the ratio of every split after its day. This
-    divides that back out and rounds to whole shares.
+    The source multiplies each volume by the ratio of every later split once a day on
+    or after that split's day is delivered, valid or not: a split announced for a day
+    after the last delivered day is already listed, yet no volume holds it. This
+    divides the applied splits back out and rounds to whole shares.
 
     Args:
         quotes: Valid quotes of one security.
         splits: Valid splits of the same security.
+        delivered: The days the source delivered for that security, valid or not.
 
     Returns:
         The quotes with volumes as traded on their day.
     """
     divisor = pd.Series(1.0, index=quotes.index)
     for split in splits.to_dict("records"):
-        divisor.loc[quotes["day"] < split["day"]] *= split["ratio"]
+        # True when a day on or after the split's was delivered, so it is applied:
+        if any(day >= split["day"] for day in delivered):
+            divisor.loc[quotes["day"] < split["day"]] *= split["ratio"]
     volume = (quotes["volume"] / divisor).round().astype("int64")
 
     return quotes.assign(volume=volume)
 
 
-def _missing_days(delivery: pd.DataFrame, exchange: str) -> int:
+def _missing_days(delivered: set[date], exchange: str) -> int:
     """Count the trading days for which the source delivered no quote.
 
     Only days between the first and the last delivered day count; weekends and
@@ -213,13 +221,12 @@ def _missing_days(delivery: pd.DataFrame, exchange: str) -> int:
     day is known is rejected, not missing.
 
     Args:
-        delivery: Quotes of one security, as the source delivered them.
+        delivered: The days the source delivered for one security, valid or not.
         exchange: MIC of the exchange the security trades on.
 
     Returns:
         The number of trading days in that range without a delivered quote.
     """
-    delivered = set(delivery["day"].dropna())
     if not delivered:
         return 0
 
@@ -307,10 +314,13 @@ def load_history(
             delivery = source.fetch_history(security.symbol)
             valid = _valid_quotes(delivery, security.exchange)
             rejected += len(delivery) - len(valid)
-            missing += _missing_days(delivery, security.exchange)
+            # A row without a day belongs to no day; it is only rejected:
+            delivered = set(delivery["day"].dropna())
+            missing += _missing_days(delivered, security.exchange)
             # Store volumes as traded, so a later split never makes a stored quote
             # wrong; indices have no splits and keep their volumes:
-            valid = _traded_volumes(valid, valid_splits.get(security.symbol, no_splits))
+            splits_of_security = valid_splits.get(security.symbol, no_splits)
+            valid = _traded_volumes(valid, splits_of_security, delivered)
             fetched = _stored_fetch_times(connection, security.symbol)
             to_save = []
             for quote in valid[PRICE_COLUMNS].to_dict("records"):
