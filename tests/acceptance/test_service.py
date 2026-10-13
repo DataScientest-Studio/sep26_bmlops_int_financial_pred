@@ -1,5 +1,7 @@
 """Acceptance tests of the API requirements (black box over HTTP)."""
 
+from datetime import datetime
+
 import exchange_calendars
 import pytest
 
@@ -28,7 +30,7 @@ def test_training_endpoint_trains_and_reports_outcome(client, engine, settings):
 
 
 def test_prediction_endpoint_forecasts_next_trading_day(client, engine, settings):
-    """REQ-SVC-001, REQ-MOD-001: forecast for the next trading day, with model."""
+    """REQ-SVC-001, REQ-MOD-001: next-day forecast, model, close it starts from."""
     security = SECURITIES[0]
     source = standard_source()
     load_history(
@@ -44,6 +46,9 @@ def test_prediction_endpoint_forecasts_next_trading_day(client, engine, settings
     assert body["symbol"] == security.symbol
     assert body["day"] == expected_day.isoformat()
     assert body["model_version"] == trained["model_version"]
+    latest_close = source.histories[security.symbol]["close"].iloc[-1]
+    assert body["start_close"] == pytest.approx(latest_close)
+    assert datetime.fromisoformat(body["start_fetched_at"]) == source.fetched_at
 
 
 @pytest.mark.parametrize("endpoint", ["/training", "/predict"])
