@@ -104,6 +104,21 @@ def test_invalid_quotes_are_rejected_and_counted(engine, settings):
     assert len(stored) == valid_days - 2
 
 
+def test_negative_volume_and_closed_days_are_rejected_and_counted(engine, settings):
+    """REQ-DAT-005: a negative volume or a day that is not a trading day is refused."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    valid_days = len(history)
+    history.loc[5, "volume"] = -100
+    saturday = history.iloc[[10]].assign(day=date(2025, 1, 4))
+    history = pd.concat([history, saturday], ignore_index=True)
+    source = FakeSource({security.symbol: history})
+    report = load_history(engine, source, (security,), (), settings.final_delay)
+    stored = _stored_rows(engine, security.symbol)
+    assert report.rejected == 2
+    assert len(stored) == valid_days - 1
+
+
 def test_invalid_splits_and_dividends_are_rejected_and_counted(engine, settings):
     """REQ-DAT-005: incomplete, non-positive or repeated events are refused."""
     security = SECURITIES[0]

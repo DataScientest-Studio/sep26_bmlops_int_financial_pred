@@ -82,7 +82,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The system rejects a delivered quote, split or dividend with a missing field, a non-positive price, ratio or amount, or a day delivered twice in one delivery before it is stored, and records the rejection.
+**Statement**: The system rejects a delivered quote, split or dividend with a missing field, a non-positive price, ratio or amount, or a day delivered twice in one delivery before it is stored, and records the rejection. It also rejects a quote with a negative volume or on a day that is not a trading day of its exchange.
 
 ### Dataset versioning
 

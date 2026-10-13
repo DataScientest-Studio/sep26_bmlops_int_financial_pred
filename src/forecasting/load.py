@@ -9,7 +9,7 @@ from sqlalchemy import Connection, Engine, TextClause, text
 
 from forecasting.config import Security
 from forecasting.db import DIVIDEND_COLUMNS, PRICE_COLUMNS, SPLIT_COLUMNS
-from forecasting.trading_calendar import session_close
+from forecasting.trading_calendar import is_trading_day, session_close
 
 SAVE_QUOTE = text(
     """
@@ -157,6 +157,30 @@ def _valid_rows(
     return delivery[complete & above_zero & first_of_day]
 
 
+def _valid_quotes(delivery: pd.DataFrame, exchange: str) -> pd.DataFrame:
+    """Keep the quotes that pass validation.
+
+    Beyond the rules of `_valid_rows` a quote is refused if its volume is negative
+    or its day is not a trading day of the exchange.
+
+    Args:
+        delivery: Quotes of one security, as the source delivered them.
+        exchange: MIC of the exchange the security trades on.
+
+    Returns:
+        The valid quotes, in delivered order.
+    """
+    valid = _valid_rows(delivery, PRICE_COLUMNS, ["open", "high", "low", "close"])
+    # True where the volume is zero or above:
+    traded = valid["volume"] >= 0
+    # True where the exchange trades that day; a Series on the same index lets &
+    # line the values up row by row:
+    trading = [is_trading_day(exchange, day) for day in valid["day"]]
+    on_trading_day = pd.Series(trading, index=valid.index, dtype=bool)
+
+    return valid[traded & on_trading_day]
+
+
 def _traded_volumes(quotes: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
     """Undo the source's correction of volumes for later splits.
 
@@ -251,9 +275,7 @@ def load_history(
             _save_events(connection, SAVE_DIVIDEND, symbol, valid)
         for security in (*securities, *indices):
             delivery = source.fetch_history(security.symbol)
-            valid = _valid_rows(
-                delivery, PRICE_COLUMNS, ["open", "high", "low", "close"]
-            )
+            valid = _valid_quotes(delivery, security.exchange)
             rejected += len(delivery) - len(valid)
             # Store volumes as traded, so a later split never makes a stored quote
             # wrong; indices have no splits and keep their volumes:
