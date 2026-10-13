@@ -157,6 +157,27 @@ def _valid_rows(
     return delivery[complete & above_zero & first_of_day]
 
 
+def _traded_volumes(quotes: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
+    """Undo the source's correction of volumes for later splits.
+
+    The source multiplies each volume by the ratio of every split after its day. This
+    divides that back out and rounds to whole shares.
+
+    Args:
+        quotes: Valid quotes of one security.
+        splits: Valid splits of the same security.
+
+    Returns:
+        The quotes with volumes as traded on their day.
+    """
+    divisor = pd.Series(1.0, index=quotes.index)
+    for split in splits.to_dict("records"):
+        divisor.loc[quotes["day"] < split["day"]] *= split["ratio"]
+    volume = (quotes["volume"] / divisor).round().astype("int64")
+
+    return quotes.assign(volume=volume)
+
+
 def _stored_fetch_times(connection: Connection, symbol: str) -> dict[date, datetime]:
     """Read when each stored quote of one security was fetched.
 
@@ -192,6 +213,7 @@ def load_history(
     """Load the prices of each security and index and each security's events in one run.
 
     Splits and dividends are fetched for securities only; a market index has none.
+    Volumes are stored as traded: the source's correction for later splits is undone.
 
     A day not yet stored is added. A stored quote that is still provisional is
     replaced by a later fetch; a final quote is kept. So a repeated run adds
@@ -213,12 +235,15 @@ def load_history(
         rejected.
     """
     stored = replaced = rejected = 0
+    valid_splits: dict[str, pd.DataFrame] = {}
+    no_splits = pd.DataFrame(columns=SPLIT_COLUMNS)
     with engine.begin() as connection:
         splits = {s.symbol: source.fetch_splits(s.symbol) for s in securities}
         dividends = {s.symbol: source.fetch_dividends(s.symbol) for s in securities}
         for symbol, delivery in splits.items():
             valid = _valid_rows(delivery, SPLIT_COLUMNS, ["ratio"])
             rejected += len(delivery) - len(valid)
+            valid_splits[symbol] = valid
             _save_events(connection, SAVE_SPLIT, symbol, valid)
         for symbol, delivery in dividends.items():
             valid = _valid_rows(delivery, DIVIDEND_COLUMNS, ["amount"])
@@ -230,6 +255,9 @@ def load_history(
                 delivery, PRICE_COLUMNS, ["open", "high", "low", "close"]
             )
             rejected += len(delivery) - len(valid)
+            # Store volumes as traded, so a later split never makes a stored quote
+            # wrong; indices have no splits and keep their volumes:
+            valid = _traded_volumes(valid, valid_splits.get(security.symbol, no_splits))
             fetched = _stored_fetch_times(connection, security.symbol)
             to_save = []
             for quote in valid[PRICE_COLUMNS].to_dict("records"):
