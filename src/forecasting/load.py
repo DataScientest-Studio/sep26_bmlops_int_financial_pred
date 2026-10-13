@@ -38,6 +38,7 @@ class PriceSource(Protocol):
             delivered: rows may be invalid. `day` holds `datetime.date` values and
             `fetched_at` the time of the fetch, timezone-aware.
         """
+        ...
 
 
 @dataclass(frozen=True)

@@ -22,6 +22,8 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 | pytest-xdist | Runs tests in several worker processes at once (`-n auto`: one per CPU core). | Faster test runs; each worker gets its own test database. |
 | httpx2 | HTTP client library, the successor of `httpx`. FastAPI's test client is built on it: tests send requests to the API in memory, without starting a server or opening a port. | API tests (`fastapi.testclient.TestClient`). |
 | ruff | Linter and formatter: finds errors and style problems, formats code (88 characters per line, Google-style docstrings). | `make lint` (also on every push); `uv run ruff format` formats the code. |
+| pyright | Type checker: finds calls with arguments or results of the wrong type before the code runs. VS Code's Pylance is built on it, so the editor and `make lint` report the same. The `nodejs` extra installs the Node.js runtime it needs. | `make lint` (also on every push). |
+| pandas-stubs | Type information for pandas, published by the pandas project: tells the type checker what each pandas call accepts and returns. | Correct type checks of pandas code (pyright, Pylance). |
 
 ## Tools run without installing
 

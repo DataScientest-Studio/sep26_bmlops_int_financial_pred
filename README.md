@@ -85,7 +85,7 @@ make db                   # starts PostgreSQL, waits until it is ready
 | `make db` | start the database |
 | `make db-stop` | stop it; the data is kept |
 | `make db-shell` | SQL prompt in the database |
-| `make lint` | code style and formatting check (ruff); changes no files |
+| `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
 | `make api` | API on http://localhost:8000, documentation at `/docs` |

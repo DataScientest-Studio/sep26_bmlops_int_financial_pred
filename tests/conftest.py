@@ -40,16 +40,18 @@ def database_url(example_settings: Settings, worker_id: str) -> Iterator[str]:
     name = f"{sqlalchemy_url.database}_test_{worker_id}"
     psycopg_url = sqlalchemy_url.set(drivername="postgresql")
     admin_url = psycopg_url.render_as_string(hide_password=False)
-    test_url = psycopg_url.set(database=name).render_as_string(hide_password=False)
+    url = sqlalchemy_url.set(database=name).render_as_string(hide_password=False)
     with psycopg.connect(admin_url, autocommit=True) as admin:
         admin.execute(
             sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(name))
         )
         admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-    with psycopg.connect(test_url, autocommit=True) as db:
+    engine = connect(url).execution_options(isolation_level="AUTOCOMMIT")
+    with engine.connect() as connection:
         for script in sorted(INIT_DIR.glob("*.sql")):
-            db.execute(script.read_text())
-    yield sqlalchemy_url.set(database=name).render_as_string(hide_password=False)
+            connection.exec_driver_sql(script.read_text())
+    engine.dispose()
+    yield url
     with psycopg.connect(admin_url, autocommit=True) as admin:
         admin.execute(
             sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(

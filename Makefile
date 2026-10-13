@@ -12,10 +12,11 @@ setup:
 requirements:
 	tools/export-requirements.sh
 
-# Checks code style and formatting; changes no files.
+# Checks code style, formatting and types; changes no files.
 lint:
 	uv run ruff check
 	uv run ruff format --check
+	uv run pyright
 
 # Starts the database and waits until it accepts connections.
 db:

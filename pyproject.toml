@@ -24,6 +24,8 @@ module-name = "forecasting"
 [dependency-groups]
 dev = [
     "httpx2>=2.13.1",
+    "pandas-stubs>=3.0.5.260914",
+    "pyright[nodejs]>=1.1.414",
     "pytest>=9.1.1",
     "pytest-xdist>=3.8.0",
     "ruff>=0.16.10",
@@ -33,6 +35,9 @@ dev = [
 testpaths = ["tests"]
 addopts = "--strict-markers -rA"
 markers = ["acceptance: black-box test of a requirement; red until the feature is built"]
+
+[tool.pyright]
+include = ["src", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "D"]
