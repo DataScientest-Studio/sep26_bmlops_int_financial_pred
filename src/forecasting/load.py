@@ -147,7 +147,7 @@ def load_history(
         engine: Engine of the project database.
         source: Where the prices come from.
         securities: The securities to load.
-        indices: Market indices; prices only, no splits or dividends.
+        indices: The market indices to load.
         final_delay: Time after the exchange's close from which a quote is final.
 
     Returns:

@@ -23,6 +23,16 @@ class Security:
     symbol: str
     exchange: str
 
+    def __post_init__(self) -> None:
+        """Refuse a symbol or exchange that is not a non-empty text.
+
+        Raises:
+            ValueError: If one of them is empty or not a string.
+        """
+        for name, value in (("symbol", self.symbol), ("exchange", self.exchange)):
+            if not isinstance(value, str) or not value:
+                raise ValueError(f"{name} must be a non-empty text, got {value!r}")
+
 
 @dataclass(frozen=True)
 class Settings:
