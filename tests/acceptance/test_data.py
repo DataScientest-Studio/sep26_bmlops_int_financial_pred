@@ -89,6 +89,16 @@ def test_load_undoes_the_split_correction_of_volumes(engine, settings):
     assert volume[date(2025, 2, 3)] == 2_000  # only the March split undone
 
 
+def test_missing_trading_days_are_counted(engine, settings):
+    """REQ-DAT-004: only trading days without a quote count as missing."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2025-03-31", seed=7)
+    history = history.drop(index=20)
+    source = FakeSource({security.symbol: history})
+    report = load_history(engine, source, (security,), (), settings.final_delay)
+    assert report.missing == 1
+
+
 def test_invalid_quotes_are_rejected_and_counted(engine, settings):
     """REQ-DAT-005: missing field, non-positive price, duplicate day are refused."""
     security = SECURITIES[0]

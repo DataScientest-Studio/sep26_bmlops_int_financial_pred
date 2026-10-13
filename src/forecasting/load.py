@@ -9,7 +9,7 @@ from sqlalchemy import Connection, Engine, TextClause, text
 
 from forecasting.config import Security
 from forecasting.db import DIVIDEND_COLUMNS, PRICE_COLUMNS, SPLIT_COLUMNS
-from forecasting.trading_calendar import is_trading_day, session_close
+from forecasting.trading_calendar import is_trading_day, session_close, trading_days
 
 SAVE_QUOTE = text(
     """
@@ -51,8 +51,9 @@ class PriceSource(Protocol):
 
         Returns:
             One row per day with the columns in `forecasting.db.PRICE_COLUMNS`, as
-            delivered: rows may be invalid. `day` holds `datetime.date` values and
-            `fetched_at` the time of the fetch, timezone-aware.
+            delivered: rows may be invalid. `day` holds plain `datetime.date` values,
+            never a `datetime` or `pandas.Timestamp`; `fetched_at` holds the time of
+            the fetch, timezone-aware.
         """
         ...
 
@@ -64,8 +65,8 @@ class PriceSource(Protocol):
 
         Returns:
             One row per split with the columns in `forecasting.db.SPLIT_COLUMNS`:
-            `day` as `datetime.date`, `ratio` as new shares per old share (4.0 for
-            a 4-for-1 split).
+            `day` as plain `datetime.date`, never a `datetime` or `pandas.Timestamp`;
+            `ratio` as new shares per old share (4.0 for a 4-for-1 split).
         """
         ...
 
@@ -77,8 +78,8 @@ class PriceSource(Protocol):
 
         Returns:
             One row per dividend with the columns in `forecasting.db.DIVIDEND_COLUMNS`:
-            `day` as `datetime.date`, `amount` as paid per share, `currency` as its
-            code (`USD`).
+            `day` as plain `datetime.date`, never a `datetime` or `pandas.Timestamp`;
+            `amount` as paid per share, `currency` as its code (`USD`).
         """
         ...
 
@@ -91,11 +92,13 @@ class LoadReport:
         stored: Number of quotes of new days written to the database.
         replaced: Number of provisional quotes overwritten by a later fetch.
         rejected: Number of quotes, splits and dividends refused by validation.
+        missing: Number of trading days for which the source delivered no quote.
     """
 
     stored: int
     replaced: int
     rejected: int
+    missing: int
 
 
 def is_final(
@@ -202,6 +205,29 @@ def _traded_volumes(quotes: pd.DataFrame, splits: pd.DataFrame) -> pd.DataFrame:
     return quotes.assign(volume=volume)
 
 
+def _missing_days(delivery: pd.DataFrame, exchange: str) -> int:
+    """Count the trading days for which the source delivered no quote.
+
+    Only days between the first and the last delivered day count; weekends and
+    holidays of the exchange are not trading days. A delivered but invalid quote whose
+    day is known is rejected, not missing.
+
+    Args:
+        delivery: Quotes of one security, as the source delivered them.
+        exchange: MIC of the exchange the security trades on.
+
+    Returns:
+        The number of trading days in that range without a delivered quote.
+    """
+    delivered = set(delivery["day"].dropna())
+    if not delivered:
+        return 0
+
+    expected = trading_days(exchange, min(delivered), max(delivered))
+
+    return len(set(expected) - delivered)
+
+
 def _stored_fetch_times(connection: Connection, symbol: str) -> dict[date, datetime]:
     """Read when each stored quote of one security was fetched.
 
@@ -243,7 +269,11 @@ def load_history(
     replaced by a later fetch; a final quote is kept. So a repeated run adds
     no duplicates and never changes a final close.
 
+    Trading days without a delivered quote are counted as missing; they do not stop the
+    load.
+
     @relation(REQ-DAT-001, scope=function)
+    @relation(REQ-DAT-004, scope=function)
     @relation(REQ-DAT-005, scope=function)
     @relation(REQ-DAT-007, scope=function)
 
@@ -255,10 +285,10 @@ def load_history(
         final_delay: Time after the exchange's close from which a quote is final.
 
     Returns:
-        How many quotes were stored and replaced, and how many quotes and events were
-        rejected.
+        How many quotes were stored and replaced, how many quotes and events were
+        rejected, and how many trading days had no delivered quote.
     """
-    stored = replaced = rejected = 0
+    stored = replaced = rejected = missing = 0
     valid_splits: dict[str, pd.DataFrame] = {}
     no_splits = pd.DataFrame(columns=SPLIT_COLUMNS)
     with engine.begin() as connection:
@@ -277,6 +307,7 @@ def load_history(
             delivery = source.fetch_history(security.symbol)
             valid = _valid_quotes(delivery, security.exchange)
             rejected += len(delivery) - len(valid)
+            missing += _missing_days(delivery, security.exchange)
             # Store volumes as traded, so a later split never makes a stored quote
             # wrong; indices have no splits and keep their volumes:
             valid = _traded_volumes(valid, valid_splits.get(security.symbol, no_splits))
@@ -300,4 +331,4 @@ def load_history(
             if to_save:
                 connection.execute(SAVE_QUOTE, to_save)
 
-    return LoadReport(stored, replaced, rejected)
+    return LoadReport(stored, replaced, rejected, missing)
