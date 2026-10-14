@@ -34,7 +34,18 @@ requirements first. Each requirement names how it is checked: Test, Demonstratio
 every push runs the style and type checks and the unit tests on GitHub (`.github/workflows/ci.yaml`, the same `make lint` and `make test` as on our machines); a failed run emails the person who pushed. `main` in the course repo refuses deletion and force pushes; once code review starts, changes reach it only through a pull request with green checks (see "Code review" in Open). Nightly runs: later, if needed.
 
 ### Data source
-EODHD, free tier: 20 calls per day and 1 year of history; each request costs one call per security. Prices, splits and dividends all come from EODHD; daily prices cover exchanges worldwide, market indices included. Each member signs up for their own free key and keeps it in their own `.env` (`EODHD_API_KEY`). `make load` loads each security without stored prices from a configured first day (`HISTORY_START`), as far back as the plan allows; `make update` fetches for each security only the days from its latest stored one on, so each run moves little data. Each request costs one call however many days it covers. How the daily calls are spent: "Daily call budget" in Open.
+EODHD, free tier as of Oct 2026: 20 calls per day, 500 one-time welcome calls on top, and 1 year of history. Prices, splits and dividends all come from EODHD; daily prices cover exchanges worldwide, market indices included. Each member signs up for their own free key and keeps it in their own `.env` (`EODHD_API_KEY`). `make load` loads each security without stored prices from a configured first day (`HISTORY_START`), as far back as the plan allows; `make update` fetches for each security only the days from its latest stored one on, so each run moves little data.
+
+A call is one request for one symbol and one kind of data, however many days it covers. With the reference securities (six stocks, two indices, `config/securities.toml`) every `make load` and every `make update` makes these calls:
+
+| Data | Fetched for | Calls |
+|---|---|---|
+| Prices from the latest stored day on (from `HISTORY_START` while none is stored) | 6 stocks, 2 indices | 8 |
+| Splits, the full list | 6 stocks | 6 |
+| Dividends, the full list | 6 stocks | 6 |
+| Total | | 20 |
+
+A stock costs three calls, an index one (an index has no splits or dividends). 20 calls is the whole free daily limit, which is why the reference securities stop at six stocks and two indices: a seventh stock would need 23. A free key therefore runs one load or update per day; the welcome calls cover reruns and `make contract` in a member's first days. How the daily calls could be spent instead: "Daily call budget" in Open.
 
 EODHD's daily prices include the current day while its session is still running (delayed by about 15 minutes), in the same form as a finished day. How such a row is handled: "Provisional closes" in "Decision proposals".
 

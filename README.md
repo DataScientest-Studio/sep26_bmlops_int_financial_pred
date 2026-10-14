@@ -76,7 +76,7 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 Needs [uv](https://docs.astral.sh/uv/), `make` and Docker with Compose. From a fresh clone:
 
 ```bash
-cp .env.example .env      # then add your own free EODHD key; keep the development login
+cp .env.example .env      # then add your own EODHD key (see "EODHD key" below); keep the development login
 make setup                # Python environment in .venv/
 make db                   # starts PostgreSQL, waits until it is ready
 make load                 # loads the price history from EODHD into the database
@@ -121,6 +121,13 @@ DELETE FROM prices WHERE symbol LIKE '%.SAMPLE';
 ```
 
 `LIKE '%.SAMPLE'` matches every symbol that ends in `.SAMPLE` (`%` stands for any text), so real prices are never deleted.
+
+### EODHD key
+Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses their own key:
+
+1. Register for the free plan at [eodhd.com](https://eodhd.com) and follow the instructions there to get your key.
+2. Put it into `.env` as `EODHD_API_KEY=...`. `.env` is never committed.
+3. Try it with `make contract`: it checks how EODHD delivers data with your key and skips, with its reason, a check your key cannot support.
 
 ## Documents
 | Document | Content |
