@@ -18,8 +18,11 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Data source | EODHD, free tier (20 calls per day, 1 year of history); each member uses their own free key; `make load` fills a new database, `make update` adds the new trading days | Agreed | Oct 12, 2026 1) | [Data source](#data-source) |
 | Close prices | prices stored as they printed; splits and dividends in tables of their own | Agreed | Oct 12, 2026 1) | [Close prices](#close-prices) |
 | Package and login | Python package `forecasting`; development login `admin`/`admin` in `.env.example`, for local use only | Built | Oct 12, 2026 1) | — |
+| Model serving | FastAPI; BentoML is not used | Coach feedback | Oct 15, 2026 2) | — |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST).
+
+2\) Coach answer in the team Slack channel, Oct 15, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's database and is never committed.
@@ -162,5 +165,4 @@ In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see "R
 - Training and prediction code: one file or two (the coach accepts either). Proposal: separate modules for training, prediction and evaluation (`src/forecasting/`), as in the course scaffold and the past group projects.
 - Code review: GitHub pull requests, once the foundation is built; until then changes go straight to `main`. How strict (one approval required, or the author merges after green checks) and the reviewer ring (`docs/team.md`) are decided then.
 - Defense date: the coach says Nov 17 or 18, the SEP26 sheet says Monday or Tuesday (Nov 16 or 17); the sheet also lists a mock defense call on Nov 12. (Ask the coach.)
-- Model serving with FastAPI or BentoML: the model API is built with FastAPI. The stack the forum post fixes names neither; the course teaches BentoML as a mandatory module and lists it beside FastAPI and Flask as a deployment option. The project uses one of the two, never both: FastAPI unless the coach expects BentoML. (Ask the coach.)
 - `requirements.txt`: the course scaffold ships one (the classic pip package list) and its stub CI may install from it. The project environment is managed by uv (`pyproject.toml`, `uv.lock`). Drop `requirements.txt`, or keep it as a file generated from `uv.lock` (`uv export --format requirements-txt`) for anyone using plain pip? Generated, it must be regenerated after every package change.
