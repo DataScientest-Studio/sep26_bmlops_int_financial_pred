@@ -1,11 +1,16 @@
 """Access to the project database."""
 
 import pandas as pd
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 
 PRICE_COLUMNS = ["day", "open", "high", "low", "close", "volume", "fetched_at"]
 SPLIT_COLUMNS = ["day", "ratio"]
 DIVIDEND_COLUMNS = ["day", "amount", "currency"]
+
+READ_PRICES = text(
+    "SELECT day, open, high, low, close, volume, fetched_at FROM prices"
+    " WHERE symbol = :symbol ORDER BY day"
+)
 
 
 def connect(database_url: str) -> Engine:
@@ -34,4 +39,10 @@ def read_prices(engine: Engine, symbol: str) -> pd.DataFrame:
     Returns:
         One row per trading day with the columns in `PRICE_COLUMNS`.
     """
-    raise NotImplementedError
+    with engine.connect() as connection:
+        prices = pd.read_sql(READ_PRICES, connection, params={"symbol": symbol})
+    # PostgreSQL numeric arrives as decimal; the model needs float.
+    for column in ["open", "high", "low", "close"]:
+        prices[column] = prices[column].astype(float)
+
+    return prices
