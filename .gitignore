@@ -1,6 +1,9 @@
 # Course material from DataScientest; condensed in references/
 course-material/
 
+# Team notes and guides kept on this machine only
+internal/
+
 # Python environment created by uv
 .venv/
 
