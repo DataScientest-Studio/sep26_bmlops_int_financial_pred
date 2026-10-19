@@ -27,7 +27,7 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 
 2\) Coach answer in the team Slack channel, Oct 15, 2026.
 
-3\) Decided by Tobias as team lead, Oct 19, 2026.
+3\) Decided by Tobias as coordinator, Oct 19, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's database and is never committed.

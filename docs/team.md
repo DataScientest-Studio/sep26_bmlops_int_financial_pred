@@ -3,7 +3,9 @@
 To be agreed by the team. Roadmap and phase goals: `plan.md`, "Roadmap".
 
 ## Members
-[team member A], [team member B], [team member C]; mentor: the course coach.
+Christian, Scheima, Tobias; mentor: the course coach.
+
+Coordinator: Tobias. The coordinator decides open points the team has not settled and records them in `plan.md` (Decisions, "Decided (Tobias)").
 
 ## Areas
 Each member owns one area from phase 1 to the defense and presents it at the defense.
