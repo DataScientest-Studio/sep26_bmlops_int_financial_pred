@@ -19,10 +19,15 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Close prices | prices stored as they printed; splits and dividends in tables of their own | Agreed | Oct 12, 2026 1) | [Close prices](#close-prices) |
 | Package and login | Python package `forecasting`; development login `admin`/`admin` in `.env.example`, for local use only | Built | Oct 12, 2026 1) | — |
 | Model serving | FastAPI; BentoML is not used | Coach feedback | Oct 15, 2026 2) | — |
+| Roadmap | milestones and phase plans as written in this plan | Decided (Tobias) | Oct 19, 2026 3) | [Roadmap](#roadmap) |
+| Reference securities | six stocks and two market indices, as configured in `config/securities.toml` | Decided (Tobias) | Oct 19, 2026 3) | [Reference securities](#reference-securities) |
+| Objectives and key metrics | as drafted in `docs/requirements.sdoc` | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "Objectives", "Key metrics" |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST).
 
 2\) Coach answer in the team Slack channel, Oct 15, 2026.
+
+3\) Decided by Tobias as team lead, Oct 19, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's database and is never committed.
@@ -55,6 +60,20 @@ EODHD's daily prices include the current day while its session is still running 
 ### Close prices
 the database stores prices as they printed — open, high, low, close and volume as traded that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as events in tables of their own; the model's inputs correct prices and volumes for them when the inputs are built. EODHD delivers volume already corrected for each split it has applied; a split it lists for a day after the last delivered day is not yet applied. The load reverses the correction with the split ratios it fetches in the same run (each day's volume divided by the ratios of all later splits up to the last delivered day). When on a split's own day EODHD applies it is unchecked (see "Split on the day of a load" in Open). EODHD keeps closes as printed and multiplies the volume before a split by its ratio; the splits API delivers each ratio as text, for example `4.000000/1.000000`.
 
+### Reference securities
+Six stocks that behave differently, plus two market indices as reference series (`config/securities.toml`). The indices are loaded like the stocks but are never a forecast target; whether the model uses their recent changes as inputs is part of "First model". Each request covers one symbol and one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs three calls per stock (prices, splits, dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily limit. A daily update costs the same when events are checked every day, 8 when only prices are fetched; a fetch during a running session does not fit beside a full daily update (see "Daily call budget" in Open).
+
+| Security | Exchange | Why |
+|---|---|---|
+| Apple (AAPL) | XNAS | very large technology company, medium volatility |
+| Tesla (TSLA) | XNAS | high volatility: does the model beat "no change" on noisy prices? |
+| JPMorgan Chase (JPM) | XNYS | bank, reacts to interest rates |
+| Exxon Mobil (XOM) | XNYS | energy, follows oil prices rather than technology |
+| Coca-Cola (KO) | XNYS | defensive, low volatility |
+| SAP (SAP) | XETR | second exchange with its own holidays, prices in euro |
+| S&P 500 index | XNYS | market trend of the US stocks |
+| DAX index | XETR | market trend of the German stock |
+
 ## Decision proposals
 To be decided by the team.
 - Scope: level 1 complete (full chain, persistence + mean-change baselines, historical replay, trading calendar), with several securities held in the SQL database from the start, plus the level 3 parts the course requires (prediction logging, drift checks, triggered retraining, keep-the-better-model rule). Level 2 items only after the chain runs end to end; cheapest first: simple sliding-window backtest.
@@ -79,32 +98,14 @@ To be decided by the team.
   - Streamlit (proposed): pure Python, as in the course material and past group projects; quick to build, with charts included.
   - Small web app (an HTML page served by FastAPI): no extra framework; layout and charts are written by hand.
   - Gradio: as quick as Streamlit, but aimed at a single model demo; weaker for pages with price history and model metrics.
-- Reference securities: six stocks that behave differently, plus two market indices as reference series (`config/securities.toml`). The indices are loaded like the stocks but are never a forecast target; whether the model uses their recent changes as inputs is part of "First model". Each request covers one symbol and one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs three calls per stock (prices, splits, dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily limit. A daily update costs the same when events are checked every day, 8 when only prices are fetched; a fetch during a running session does not fit beside a full daily update (see "Daily call budget" in Open).
-
-  | Security | Exchange | Why |
-  |---|---|---|
-  | Apple (AAPL) | XNAS | very large technology company, medium volatility |
-  | Tesla (TSLA) | XNAS | high volatility: does the model beat "no change" on noisy prices? |
-  | JPMorgan Chase (JPM) | XNYS | bank, reacts to interest rates |
-  | Exxon Mobil (XOM) | XNYS | energy, follows oil prices rather than technology |
-  | Coca-Cola (KO) | XNYS | defensive, low volatility |
-  | SAP (SAP) | XETR | second exchange with its own holidays, prices in euro |
-  | S&P 500 index | XNYS | market trend of the US stocks |
-  | DAX index | XETR | market trend of the German stock |
-
-  Alternatives:
-  - Six stocks and two indices (proposed): covers different volatility levels, sectors and two exchange calendars; the market trend is available to the model; the first load uses the whole daily limit.
-  - Four stocks and two indices: 14 calls per full load or update, leaving 6 for a fetch during the session; fewer kinds of behaviour.
-  - Six stocks, no indices: no market trend for the model; two calls fewer per day.
-  - Exchange-traded funds instead of indices (SPY for the S&P 500, EXS1 for the DAX): traded like stocks, but they pay dividends, so each costs three calls on the first load.
 - Provisional closes: during a running session the latest price stands in for the close. Each stored row carries the time it was fetched; a row is final once it was fetched a set delay after its exchange's close (trading calendar, early closes included; the delay covers EODHD's 15 minutes and the closing auction, for example 20 minutes, and is a setting). A later fetch replaces a provisional row and never a final one. Training uses final rows only; a forecast may start from a provisional close and then says so: the response gives the close it starts from and when that price was fetched. `make update` runs once a day at any time; a run during a session stores that day as provisional, and the next day's run replaces it with the final close.
   Alternatives:
   - Provisional rows with fetch time, replaced until final (proposed): a forecast is available during the session and the stored close is corrected by the next run; one more column and an update rule instead of insert-only.
   - Store only finished sessions (rows of a running session are dropped): simplest, insert-only; forecasts only after the close.
   - Store EODHD's rows as delivered: a price from mid-session stays in the database as the close, because a stored day is never replaced.
 
-## Roadmap — proposal
-To be agreed by the team. Team setup and areas: `docs/team.md`.
+## Roadmap
+Team setup and areas: `docs/team.md`.
 
 Target application, as the jury sees it at the defense: a demo app that calls the model API (see "Demo app" in "Decision proposals").
 - Pick a security; see its next-day forecast with the model version, next to both baselines; the "not investment advice" notice always visible.
@@ -116,7 +117,7 @@ Live demo: replay advances the simulated calendar by a few trading days and the 
 | Period | Milestone | Content |
 |---|---|---|
 | until Mon Oct 12 (coach meeting 12:00) | Foundations: a clone plus `make` gives a database with history, a trained baseline and an API answering `predict/` | "Phase 1 plan" below; roadmap and team setup agreed |
-| Oct 13–22 (coach meeting) | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes in MLflow |
+| Oct 13–22 (coach meeting) | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes in MLflow; items in "Phase 2 plan" |
 | Oct 23–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with alerts and the retraining webhook, first demo app version |
 | Nov 7–11 | Feature freeze Nov 11 | tests, README and API docs, check from a fresh clone, demo script |
 | Thu Nov 12 | Mock defense call | full demo as at the defense |
@@ -129,16 +130,38 @@ Proposal for the team. Coach meeting Mon Oct 12, 12:00 (invite sent; a time that
 
 Goal: a teammate runs `git clone` and a handful of `make` commands and gets a running database with price history, a trained baseline model, and an API answering `predict/`.
 
-| # | Item | Done when | Depends on |
-|---|---|---|---|
-| 0 | Team meeting (before Oct 12) | roadmap draft and organisational setup agreed (see Open); database, data source and securities decided; objectives and key metrics (draft in `docs/requirements.sdoc`) confirmed | — |
-| 1 | Repo ready and shared | team has write access; own repo structure (coach feedback, see [Decisions](#decisions), note 1); template README replaced; `.gitignore` and `.env.example` in place; CI passes (see "Continuous integration") | 0 |
-| 2 | Reproducible environment | `pyproject.toml`, `uv.lock`, `.python-version`; Makefile targets `setup`, `db`, `load`, `update`, `train`, `predict`, `api`, `test`; works from a fresh clone | 1 |
-| 3 | PostgreSQL | Compose file with only the database (exact image tag, data volume, credentials from `.env`); table `prices` keyed by (security, day) | 2 |
-| 4 | One-time load script | loads the history of the agreed securities; a re-run creates no duplicates; API key read from `.env` | 3, data source |
-| 5 | Baseline training pipeline | a training function reads prices from the database, builds the target (next-day change), trains, compares with the persistence and mean-change baselines, saves the model to a gitignored folder; a prediction function returns the next-day forecast for one security; one file or two (see Open) | 3 (4 for real data) |
-| 6 | Initial API endpoints | FastAPI with `training/` (runs training) and `predict/` (security in; forecast and model version out) | 5 |
-| 7 | Minimum tests and docs | unit tests (pytest, run in parallel with pytest-xdist) for feature building and both endpoints; README section "Setup from a fresh clone" | 2–6 |
+Each item lists what makes it done; a ticked box is done, an open box is still to do. Depends on: in brackets.
+
+- [ ] **0 Team meeting** (before Oct 12; held Oct 11)
+  - [x] roadmap decided (Tobias, Oct 19)
+  - [ ] organisational setup agreed (see Open)
+  - [x] database and data source decided
+  - [x] securities decided (Tobias, Oct 19; see "Reference securities")
+  - [x] objectives and key metrics (`docs/requirements.sdoc`) decided (Tobias, Oct 19)
+- [x] **1 Repo ready and shared** (0)
+  - [x] every member invited to write access; closed (Tobias, Oct 19)
+  - [x] own repo structure (coach feedback, see [Decisions](#decisions), note 1)
+  - [x] template README replaced
+  - [x] `.gitignore` and `.env.example` in place
+  - [x] CI passes (see "Continuous integration")
+- [ ] **2 Reproducible environment** (1)
+  - [x] `pyproject.toml`, `uv.lock`, `.python-version`; works from a fresh clone
+  - [x] Makefile targets `setup`, `db`, `load`, `update`, `api`, `test`
+  - [ ] Makefile targets `train`, `predict`
+- [x] **3 PostgreSQL** (2): Compose file with only the database (exact image tag, data volume, credentials from `.env`); table `prices` keyed by (security, day)
+- [x] **4 One-time load script** (3, data source): loads the history of the agreed securities; a re-run creates no duplicates; API key read from `.env`
+- [ ] **5 Baseline training pipeline** (3; 4 for real data)
+  - [x] `read_prices` reads the stored prices of one security
+  - [ ] a training function builds the target (next-day change), trains, compares with the persistence and mean-change baselines, saves the model to a gitignored folder
+  - [ ] a prediction function returns the next-day forecast for one security
+  - [ ] unit tests for feature building
+  - [ ] the acceptance tests of REQ-MOD-001–003 pass
+- [ ] **6 Initial API endpoints** (5)
+  - [x] FastAPI routes `training/` (runs training) and `predict/` (security in; forecast and model version out), wired to the training and prediction functions; unknown symbols refused
+  - [ ] the acceptance tests of REQ-SVC-001/002 pass
+- [x] **7 Minimum tests and docs** (2–6)
+  - [x] README section "Setup", from a fresh clone
+  - [x] unit tests run in parallel with pytest-xdist; both endpoints covered by the acceptance tests of REQ-SVC-001/002
 
 Repo sharing (item 1): every member works with their own GitHub account; access is granted to the accounts, never shared. Each member brings their GitHub username to the meeting.
 - Team repo: the course repo `DataScientest-Studio/sep26_bmlops_int_financial_pred`, holding this project's full history. Members get write access by invitation from an admin of the repo.
@@ -152,16 +175,62 @@ Interfaces to agree at the meeting, so items 3–6 can be built in parallel:
 
 Split: by area (data, model, service), see `docs/team.md`.
 
-In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see "Roadmap — proposal").
+In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see "Roadmap").
+
+## Phase 2 plan — the chain runs end to end
+Proposal for the team. Coach meeting Thu Oct 22 (a progress check, not a submission).
+
+Goal: Airflow starts the chain on a schedule and it runs with no manual step — new quotes (in a demo: replayed history) reach the database, a model is trained on them, MLflow records the run, the new model is promoted if it beats the production model, and the API serves the production model. `docker compose up` starts all of it.
+
+Course checklist for this phase (`references/course-checklist.md`): MLflow tracking and model registry; compare each new run with the previous model and tag the best; Docker microservices with Compose; scheduled training (Airflow recommended); DVC without Git, dataset hashes stored in MLflow. Optional: unit tests and CI, API security, Kubernetes.
+
+Each item is one complete piece that fits the interfaces below; it is merged only when it works. Depends on: in brackets.
+
+- [ ] **1 Phase 1 finished**: the open boxes of the Phase 1 plan; every acceptance test of phase 1 passes. Blocks everything below.
+- [ ] **2 Project image and `api` service** (1; REQ-AUT-003)
+  - [ ] one image holds the project's code and its locked packages
+  - [ ] Compose runs the API from it next to the database
+  - [ ] paths (securities file, model store) no longer depend on the folder a command starts in
+- [ ] **3 MLflow tracking** (1, 2; REQ-MOD-004)
+  - [ ] MLflow in Compose, with its own database
+  - [ ] every training run records its parameters, metrics, dataset version and model
+  - [ ] MLflow is the model store; the plain model folder (`MODEL_DIR`) is removed
+- [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
+  - [ ] one registered model per security
+  - [ ] a new model becomes production only if it scores better than the production model on the same evaluation days; the first model always does
+  - [ ] `predict/` uses the production model; the training response says whether the model was promoted
+- [ ] **5 Dataset version** (3; REQ-DAT-006)
+  - [ ] each training run's input data gets a version id from DVC without Git
+  - [ ] MLflow records it with the run
+- [ ] **6 Replay** (2; REQ-DAT-003)
+  - [ ] stored history is replayed one trading day at a time, at a speed the operator sets
+  - [ ] replay writes to a database of its own; the member's own data stays untouched
+- [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001)
+  - [ ] Airflow in Compose
+  - [ ] ingestion pipeline: the daily update, or one replayed day
+  - [ ] training pipeline: train, then promote, for each security
+- [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005 and REQ-AUT-003
+
+Optional, after item 7: API access (REQ-SVC-004), CI building the images (REQ-AUT-004).
+
+Interfaces to agree first, so items 2–7 can be built in parallel:
+- Commands: `update`, `replay`, `train`, `promote` (each `python -m forecasting.commands <name>` and a `make` target); Airflow runs the same commands.
+- Registered model names: one per security, for example `forecast-AAPL.US`.
+- Settings: MLflow address, evaluation window, replay speed, schedule.
+
+To decide before building (proposals):
+- "Better model" (REQ-MOD-005; "Key metrics" leaves the main metric and the threshold to the team): lower mean absolute error on the last 60 trading days; a tie keeps the production model.
+- Replay speed (REQ-DAT-003): trading days per minute, a setting.
+- DVC and the database as the only data store (REQ-CON-003): a DVC snapshot is a version record of a training dataset, never the store it is read from.
+- How Airflow runs the project's code: the project image runs each command (Airflow's own image holds none of the project's packages, so their versions never clash with Airflow's); LocalExecutor (one machine needs no worker queue). Alternative: a custom Airflow image with the project installed — no Docker access needed, but the project's pandas and SQLAlchemy versions must fit Airflow's.
+- Date: whether the chain is complete by Oct 22, or Oct 22 shows items 1–2 and the agreed plan with a new date for the rest (the roadmap row Oct 13–22).
 
 ## Open
-- Roadmap: proposal in "Roadmap — proposal", to be agreed by the team before building (coach). Input still to review: the coach's previous group repos (`references/README.md`, past learner projects).
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings, communication, work tracking, reviews), to be agreed by the team.
 - Local operation or a live cloud database (REQ-CON-002): decided by the team once the foundation runs (load, training, prediction, API). Every member's pipeline needs an up-to-date database during development. Options: each member runs their own database and loads from the data source; a shared development database on a team member's NAS, reached over Tailscale; a live database on a small rented cloud server (for example, AWS). REQ-CON-002 (no cloud service) changes if the team chooses a cloud database.
 - Daily call budget (phase 2, daily ingestion): one setting per member and key, the calls per day the EODHD plan allows (`calls_per_day`, 20 on the free plan). Proposal: each day the prices come first, one call per security; the calls left check splits and dividends, the securities checked longest ago first, so the rhythm follows the number of securities (6 securities on the free plan: daily; 16: about every 8 days). Market indices take one price call each and have no events; every fetch during a running session (see "Provisional closes") costs one more price call per security and index. Calls used are counted in the database across runs and reset at 00:00 UTC, when EODHD's day turns; a spent budget stops requests until then, and the run reports what it left out; more securities than calls per day is refused at start. Alternative: a fixed "check events every N days" setting beside the budget — simpler, but re-tuned by hand whenever the securities change, and nothing stops a combination that exceeds the budget. Either way, a split noticed late leaves the newest model input wrong until it is fetched.
 - Split on the day of a load: when on the split's own day EODHD corrects the earlier volumes (before the session opens, during it, or only after the close) is unchecked. The load undoes a split once that day is delivered; if EODHD corrects at another time, a load on that day stores the earlier volumes multiplied or divided by the split's ratio, and they stay so. Check: on a split day, fetch the security before the open, during the session and after the close, and compare the previous day's volume with the one fetched the evening before.
-- Data to trade on: which securities and how much history the model learns from (`HISTORY_START`, default 1980-01-02, the earliest day the trading calendar covers). German prices from before Xetra (1997) follow the old Frankfurt floor's holidays, which the Xetra calendar describes slightly differently: a few days a year are counted as missing or rejected. To be decided by the team.
-- Objectives and key metrics: draft in `docs/requirements.sdoc`, to be confirmed by the team; main metric and the "better model" rule still to be defined.
+- History to train on: how much history the model learns from (`HISTORY_START`, default 1980-01-02, the earliest day the trading calendar covers). German prices from before Xetra (1997) follow the old Frankfurt floor's holidays, which the Xetra calendar describes slightly differently: a few days a year are counted as missing or rejected. To be decided.
 - Training and prediction code: one file or two (the coach accepts either). Proposal: separate modules for training, prediction and evaluation (`src/forecasting/`), as in the course scaffold and the past group projects.
 - Code review: GitHub pull requests, once the foundation is built; until then changes go straight to `main`. How strict (one approval required, or the author merges after green checks) and the reviewer ring (`docs/team.md`) are decided then.
 - Defense date: the coach says Nov 17 or 18, the SEP26 sheet says Monday or Tuesday (Nov 16 or 17); the sheet also lists a mock defense call on Nov 12. (Ask the coach.)

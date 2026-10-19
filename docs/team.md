@@ -1,6 +1,6 @@
 # Team setup — proposal
 
-To be agreed by the team. Roadmap and phase goals: `plan.md`, "Roadmap — proposal".
+To be agreed by the team. Roadmap and phase goals: `plan.md`, "Roadmap".
 
 ## Members
 [team member A], [team member B], [team member C]; mentor: the course coach.
