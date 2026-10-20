@@ -22,6 +22,11 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Roadmap | milestones and phase plans as written in this plan | Decided (Tobias) | Oct 19, 2026 3) | [Roadmap](#roadmap) |
 | Reference securities | six stocks and two market indices, as configured in `config/securities.toml` | Decided (Tobias) | Oct 19, 2026 3) | [Reference securities](#reference-securities) |
 | Objectives and key metrics | as drafted in `docs/requirements.sdoc` | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "Objectives", "Key metrics" |
+| Local operation | each member runs the whole system on their own machine; no cloud service | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "What the product supports" |
+| Better model | a new model is promoted only if its mean absolute error on the evaluation window (last 60 trading days) is lower than the production model's on the same days; a tie keeps the production model; a security's first model is always promoted | Decided (Tobias) | Oct 19, 2026 3) | REQ-MOD-005 |
+| Replay | replays into a database of its own, at a speed in trading days per minute (a setting) | Decided (Tobias) | Oct 19, 2026 3) | REQ-DAT-003 |
+| Dataset versions | a DVC snapshot is a version record of a training dataset, never the store training reads from | Decided (Tobias) | Oct 19, 2026 3) | REQ-CON-003 |
+| Airflow | Airflow 3.3.2 with the LocalExecutor; each task runs a project command in the project image | Decided (Tobias) | Oct 19, 2026 3) | [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST).
 
@@ -53,15 +58,15 @@ A call is one request for one symbol and one kind of data, however many days it 
 | Dividends, the full list | 6 stocks | 6 |
 | Total | | 20 |
 
-A stock costs three calls, an index one (an index has no splits or dividends). 20 calls is the whole free daily limit, which is why the reference securities stop at six stocks and two indices: a seventh stock would need 23. A free key therefore runs one load or update per day; the welcome calls cover reruns and `make contract` in a member's first days. How the daily calls could be spent instead: "Daily call budget" in Open.
+A stock costs three calls, an index one (an index has no splits or dividends). 20 calls is the whole free daily limit, which is why the reference securities stop at six stocks and two indices: a seventh stock would need 23. A free key therefore runs one load or update per day; the welcome calls cover reruns and `make contract` in a member's first days.
 
 EODHD's daily prices include the current day while its session is still running (delayed by about 15 minutes), in the same form as a finished day. How such a row is handled: "Provisional closes" in "Decision proposals".
 
 ### Close prices
-the database stores prices as they printed — open, high, low, close and volume as traded that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as events in tables of their own; the model's inputs correct prices and volumes for them when the inputs are built. EODHD delivers volume already corrected for each split it has applied; a split it lists for a day after the last delivered day is not yet applied. The load reverses the correction with the split ratios it fetches in the same run (each day's volume divided by the ratios of all later splits up to the last delivered day). When on a split's own day EODHD applies it is unchecked (see "Split on the day of a load" in Open). EODHD keeps closes as printed and multiplies the volume before a split by its ratio; the splits API delivers each ratio as text, for example `4.000000/1.000000`.
+the database stores prices as they printed — open, high, low, close and volume as traded that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as events in tables of their own; the model's inputs correct prices and volumes for them when the inputs are built. EODHD delivers volume already corrected for each split it has applied; a split it lists for a day after the last delivered day is not yet applied. The load reverses the correction with the split ratios it fetches in the same run (each day's volume divided by the ratios of all later splits up to the last delivered day). When on a split's own day EODHD applies it (before the session opens, during it, or only after the close) is unchecked; it is checked when a reference security next splits. EODHD keeps closes as printed and multiplies the volume before a split by its ratio; the splits API delivers each ratio as text, for example `4.000000/1.000000`.
 
 ### Reference securities
-Six stocks that behave differently, plus two market indices as reference series (`config/securities.toml`). The indices are loaded like the stocks but are never a forecast target; whether the model uses their recent changes as inputs is part of "First model". Each request covers one symbol and one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs three calls per stock (prices, splits, dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily limit. A daily update costs the same when events are checked every day, 8 when only prices are fetched; a fetch during a running session does not fit beside a full daily update (see "Daily call budget" in Open).
+Six stocks that behave differently, plus two market indices as reference series (`config/securities.toml`). The indices are loaded like the stocks but are never a forecast target; whether the model uses their recent changes as inputs is part of "First model". Each request covers one symbol and one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs three calls per stock (prices, splits, dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily limit. A daily update costs the same when events are checked every day, 8 when only prices are fetched; a fetch during a running session does not fit beside a full daily update on the free tier.
 
 | Security | Exchange | Why |
 |---|---|---|
@@ -117,8 +122,9 @@ Live demo: replay advances the simulated calendar by a few trading days and the 
 | Period | Milestone | Content |
 |---|---|---|
 | until Mon Oct 12 (coach meeting 12:00) | Foundations: a clone plus `make` gives a database with history, a trained baseline and an API answering `predict/` | "Phase 1 plan" below; roadmap and team setup agreed |
-| Oct 13–22 (coach meeting) | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes in MLflow; items in "Phase 2 plan" |
-| Oct 23–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with alerts and the retraining webhook, first demo app version |
+| Oct 13–22 (coach meeting) | Phase 1 finished and the first phase 2 piece | open items of the "Phase 1 plan"; the agreed "Phase 2 plan" |
+| Oct 23–29 | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes in MLflow; items in "Phase 2 plan" |
+| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with alerts and the retraining webhook, first demo app version |
 | Nov 7–11 | Feature freeze Nov 11 | tests, README and API docs, check from a fresh clone, demo script |
 | Thu Nov 12 | Mock defense call | full demo as at the defense |
 | Nov 13–16 | Polish and rehearse | fixes from the mock defense, presentation (slides or in the demo app), 1–2 rehearsals with equal speaking time |
@@ -178,7 +184,7 @@ Split: by area (data, model, service), see `docs/team.md`.
 In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see "Roadmap").
 
 ## Phase 2 plan — the chain runs end to end
-Proposal for the team. Coach meeting Thu Oct 22 (a progress check, not a submission).
+Coach meeting Thu Oct 22 (a progress check, not a submission): phase 1 finished and the first piece below. The chain is complete by Oct 29.
 
 Goal: Airflow starts the chain on a schedule and it runs with no manual step — new quotes (in a demo: replayed history) reach the database, a model is trained on them, MLflow records the run, the new model is promoted if it beats the production model, and the API serves the production model. `docker compose up` starts all of it.
 
@@ -186,8 +192,8 @@ Course checklist for this phase (`references/course-checklist.md`): MLflow track
 
 Each item is one complete piece that fits the interfaces below; it is merged only when it works. Depends on: in brackets.
 
-- [ ] **1 Phase 1 finished**: the open boxes of the Phase 1 plan; every acceptance test of phase 1 passes. Blocks everything below.
-- [ ] **2 Project image and `api` service** (1; REQ-AUT-003)
+- [ ] **1 Phase 1 finished**: the open boxes of the Phase 1 plan; every acceptance test of phase 1 passes. Blocks items 3 and 4 and the training pipeline of item 7; the other items need no trained model.
+- [ ] **2 Project image and `api` service** (REQ-AUT-003)
   - [ ] one image holds the project's code and its locked packages
   - [ ] Compose runs the API from it next to the database
   - [ ] paths (securities file, model store) no longer depend on the folder a command starts in
@@ -197,16 +203,18 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [ ] MLflow is the model store; the plain model folder (`MODEL_DIR`) is removed
 - [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
   - [ ] one registered model per security
-  - [ ] a new model becomes production only if it scores better than the production model on the same evaluation days; the first model always does
+  - [ ] a new model becomes production only if its mean absolute error on the evaluation window is lower than the production model's on the same days; a tie keeps the production model; the first model always becomes production
   - [ ] `predict/` uses the production model; the training response says whether the model was promoted
-- [ ] **5 Dataset version** (3; REQ-DAT-006)
-  - [ ] each training run's input data gets a version id from DVC without Git
+- [ ] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
+  - [ ] each training run's input data gets a version id from DVC without Git; the snapshot is a record, training reads from the database
   - [ ] MLflow records it with the run
-- [ ] **6 Replay** (2; REQ-DAT-003)
-  - [ ] stored history is replayed one trading day at a time, at a speed the operator sets
-  - [ ] replay writes to a database of its own; the member's own data stays untouched
+- [ ] **6 Replay** (7 for the speed; REQ-DAT-003)
+  - [ ] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
+  - [ ] the first run creates the replay database and fills it up to `REPLAY_START` (between the first and the latest stored day); at the latest stored day there is nothing left to replay; `make replay-reset` deletes the replay database, so the next run starts over from `REPLAY_START`; with nothing stored, replay is refused
+  - [ ] the member's own database is only read; replay makes no EODHD calls
+  - [ ] the replay speed (trading days per minute) is the schedule of the Airflow ingestion pipeline (item 7)
 - [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001)
-  - [ ] Airflow in Compose
+  - [ ] Airflow 3.3.2 in Compose, LocalExecutor; each task runs a project command in the project image (Airflow's own image holds none of the project's packages, so their versions never clash)
   - [ ] ingestion pipeline: the daily update, or one replayed day
   - [ ] training pipeline: train, then promote, for each security
 - [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005 and REQ-AUT-003
@@ -214,24 +222,13 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
 Optional, after item 7: API access (REQ-SVC-004), CI building the images (REQ-AUT-004).
 
 Interfaces to agree first, so items 2–7 can be built in parallel:
-- Commands: `update`, `replay`, `train`, `promote` (each `python -m forecasting.commands <name>` and a `make` target); Airflow runs the same commands.
+- Commands: `update`, `replay`, `replay-reset`, `train`, `promote` (each `python -m forecasting.commands <name>` and a `make` target); Airflow runs the same commands.
 - Registered model names: one per security, for example `forecast-AAPL.US`.
-- Settings: MLflow address, evaluation window, replay speed, schedule.
-
-To decide before building (proposals):
-- "Better model" (REQ-MOD-005; "Key metrics" leaves the main metric and the threshold to the team): lower mean absolute error on the last 60 trading days; a tie keeps the production model.
-- Replay speed (REQ-DAT-003): trading days per minute, a setting.
-- DVC and the database as the only data store (REQ-CON-003): a DVC snapshot is a version record of a training dataset, never the store it is read from.
-- How Airflow runs the project's code: the project image runs each command (Airflow's own image holds none of the project's packages, so their versions never clash with Airflow's); LocalExecutor (one machine needs no worker queue). Alternative: a custom Airflow image with the project installed — no Docker access needed, but the project's pandas and SQLAlchemy versions must fit Airflow's.
-- Date: whether the chain is complete by Oct 22, or Oct 22 shows items 1–2 and the agreed plan with a new date for the rest (the roadmap row Oct 13–22).
+- Settings: MLflow address, evaluation window (default 60 trading days), replay speed (trading days per minute), schedule.
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings, communication, work tracking, reviews), to be agreed by the team.
-- Local operation or a live cloud database (REQ-CON-002): decided by the team once the foundation runs (load, training, prediction, API). Every member's pipeline needs an up-to-date database during development. Options: each member runs their own database and loads from the data source; a shared development database on a team member's NAS, reached over Tailscale; a live database on a small rented cloud server (for example, AWS). REQ-CON-002 (no cloud service) changes if the team chooses a cloud database.
-- Daily call budget (phase 2, daily ingestion): one setting per member and key, the calls per day the EODHD plan allows (`calls_per_day`, 20 on the free plan). Proposal: each day the prices come first, one call per security; the calls left check splits and dividends, the securities checked longest ago first, so the rhythm follows the number of securities (6 securities on the free plan: daily; 16: about every 8 days). Market indices take one price call each and have no events; every fetch during a running session (see "Provisional closes") costs one more price call per security and index. Calls used are counted in the database across runs and reset at 00:00 UTC, when EODHD's day turns; a spent budget stops requests until then, and the run reports what it left out; more securities than calls per day is refused at start. Alternative: a fixed "check events every N days" setting beside the budget — simpler, but re-tuned by hand whenever the securities change, and nothing stops a combination that exceeds the budget. Either way, a split noticed late leaves the newest model input wrong until it is fetched.
-- Split on the day of a load: when on the split's own day EODHD corrects the earlier volumes (before the session opens, during it, or only after the close) is unchecked. The load undoes a split once that day is delivered; if EODHD corrects at another time, a load on that day stores the earlier volumes multiplied or divided by the split's ratio, and they stay so. Check: on a split day, fetch the security before the open, during the session and after the close, and compare the previous day's volume with the one fetched the evening before.
 - History to train on: how much history the model learns from (`HISTORY_START`, default 1980-01-02, the earliest day the trading calendar covers). German prices from before Xetra (1997) follow the old Frankfurt floor's holidays, which the Xetra calendar describes slightly differently: a few days a year are counted as missing or rejected. To be decided.
 - Training and prediction code: one file or two (the coach accepts either). Proposal: separate modules for training, prediction and evaluation (`src/forecasting/`), as in the course scaffold and the past group projects.
 - Code review: GitHub pull requests, once the foundation is built; until then changes go straight to `main`. How strict (one approval required, or the author merges after green checks) and the reviewer ring (`docs/team.md`) are decided then.
 - Defense date: the coach says Nov 17 or 18, the SEP26 sheet says Monday or Tuesday (Nov 16 or 17); the sheet also lists a mock defense call on Nov 12. (Ask the coach.)
-- `requirements.txt`: the course scaffold ships one (the classic pip package list) and its stub CI may install from it. The project environment is managed by uv (`pyproject.toml`, `uv.lock`). Drop `requirements.txt`, or keep it as a file generated from `uv.lock` (`uv export --format requirements-txt`) for anyone using plain pip? Generated, it must be regenerated after every package change.
