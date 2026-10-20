@@ -1,13 +1,13 @@
 """Access to the project database and the databases built with its tables."""
 
-from pathlib import Path
-
 import pandas as pd
 import psycopg
 from psycopg import sql
 from sqlalchemy import Engine, create_engine, make_url, text
 
-INIT_DIR = Path("db/init")
+from forecasting.config import PROJECT_DIR
+
+INIT_DIR = PROJECT_DIR / "db" / "init"
 
 PRICE_COLUMNS = ["day", "open", "high", "low", "close", "volume", "fetched_at"]
 SPLIT_COLUMNS = ["day", "ratio"]
@@ -39,6 +39,7 @@ def create_database(database_url: str) -> None:
     A database of that name is dropped first.
 
     @relation(REQ-DAT-003, scope=function)
+    @relation(REQ-AUT-005, scope=function)
 
     Args:
         database_url: SQLAlchemy URL of the database to create.

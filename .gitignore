@@ -10,8 +10,9 @@ internal/
 # Local settings and passwords
 .env
 
-# Trained models
-models/
+# Trained models; the empty folder is kept, so Docker never has to create it (as root)
+models/*
+!models/.gitkeep
 
 # Python cache
 __pycache__/

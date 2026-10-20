@@ -11,6 +11,7 @@ from forecasting.db import connect
 from forecasting.load import load_history
 from forecasting.replay import replay_next_day
 from forecasting.trading_calendar import session_close, trading_days
+from tests.acceptance.tables import load_history_around_start, stored_table
 from tests.fakes import (
     INDICES,
     SECURITIES,
@@ -27,13 +28,6 @@ def _stored_rows(engine, symbol: str) -> pd.DataFrame:
     query = text("SELECT * FROM prices WHERE symbol = :symbol ORDER BY day")
     with engine.connect() as connection:
         return pd.read_sql(query, connection, params={"symbol": symbol})
-
-
-def _stored_table(engine, table: str) -> pd.DataFrame:
-    """Read every stored row of one table straight from it, by symbol and day."""
-    query = text(f"SELECT * FROM {table} ORDER BY symbol, day")
-    with engine.connect() as connection:
-        return pd.read_sql(query, connection)
 
 
 def _last_row(engine, symbol: str) -> pd.Series:
@@ -79,8 +73,8 @@ def test_load_stores_splits_and_dividends_of_each_security(engine, settings):
         settings.final_delay,
         settings.history_start,
     )
-    stored_splits = _stored_table(engine, "splits")
-    stored_dividends = _stored_table(engine, "dividends")
+    stored_splits = stored_table(engine, "splits")
+    stored_dividends = stored_table(engine, "dividends")
     assert list(stored_splits["symbol"]) == ["TEST.US"]
     assert list(stored_splits["day"]) == [date(2025, 6, 2)]
     assert list(stored_splits["ratio"].astype(float)) == [4.0]
@@ -245,8 +239,8 @@ def test_invalid_splits_and_dividends_are_rejected_and_counted(engine, settings)
     report = load_history(
         engine, source, (security,), (), settings.final_delay, settings.history_start
     )
-    stored_splits = _stored_table(engine, "splits")
-    stored_dividends = _stored_table(engine, "dividends")
+    stored_splits = stored_table(engine, "splits")
+    stored_dividends = stored_table(engine, "dividends")
     assert report.rejected == 6
     assert list(stored_splits["day"]) == [date(2025, 1, 6)]
     assert list(stored_splits["ratio"].astype(float)) == [2.0]
@@ -315,59 +309,24 @@ def test_early_close_makes_a_quote_final_sooner(engine, settings):
     )
 
 
-def _source_around(day: date) -> FakeSource:
-    """Deliver two months of prices, a split and a dividend on both sides of `day`."""
-    start = (day - timedelta(days=30)).isoformat()
-    end = (day + timedelta(days=30)).isoformat()
-    before = day - timedelta(days=10)
-    after = day + timedelta(days=10)
-
-    return FakeSource(
-        {
-            s.symbol: price_history(s.exchange, start, end, seed=i)
-            for i, s in enumerate(SECURITIES + INDICES)
-        },
-        splits={"TEST.US": pd.DataFrame({"day": [before, after], "ratio": [2.0, 3.0]})},
-        dividends={
-            "TEST.US": pd.DataFrame(
-                {"day": [before, after], "amount": [0.25, 0.30], "currency": "USD"}
-            )
-        },
-    )
-
-
-def _load_history_around_start(engine, settings) -> pd.Series:
-    """Load the test history around `REPLAY_START`; return the stored days."""
-    load_history(
-        engine,
-        _source_around(settings.replay_start),
-        SECURITIES,
-        INDICES,
-        settings.final_delay,
-        settings.history_start,
-    )
-
-    return _stored_table(engine, "prices")["day"]
-
-
 def test_first_replay_copies_the_history_up_to_the_start_day(
     engine, settings, replay_url
 ):
     """REQ-DAT-003: the first run copies every stored row up to the start, unchanged."""
-    _load_history_around_start(engine, settings)
+    load_history_around_start(engine, settings)
     replay_next_day(engine, replay_url, settings.replay_start)
     replay_engine = connect(replay_url)
     for table in ["prices", "splits", "dividends"]:
-        stored = _stored_table(engine, table)
+        stored = stored_table(engine, table)
         expected = stored[stored["day"] <= settings.replay_start]
-        replayed = _stored_table(replay_engine, table)
+        replayed = stored_table(replay_engine, table)
         pd.testing.assert_frame_equal(replayed, expected.reset_index(drop=True))
     replay_engine.dispose()
 
 
 def test_each_later_replay_adds_the_next_stored_day(engine, settings, replay_url):
     """REQ-DAT-003: each later run copies the next stored day."""
-    _load_history_around_start(engine, settings)
+    load_history_around_start(engine, settings)
     securities = SECURITIES + INDICES
     first = settings.replay_start + timedelta(days=1)
     last = settings.replay_start + timedelta(days=30)
@@ -381,8 +340,8 @@ def test_each_later_replay_adds_the_next_stored_day(engine, settings, replay_url
     assert replayed_days == open_days
     replay_engine = connect(replay_url)
     for table in ["prices", "splits", "dividends"]:
-        replayed = _stored_table(replay_engine, table)
-        pd.testing.assert_frame_equal(replayed, _stored_table(engine, table))
+        replayed = stored_table(replay_engine, table)
+        pd.testing.assert_frame_equal(replayed, stored_table(engine, table))
     replay_engine.dispose()
 
 
@@ -432,7 +391,7 @@ def test_replay_starts_on_the_first_or_latest_stored_day(
     engine, settings, replay_url, edge
 ):
     """REQ-DAT-003: the replay may start on the first or the latest stored day."""
-    start = edge(_load_history_around_start(engine, settings))
+    start = edge(load_history_around_start(engine, settings))
     assert replay_next_day(engine, replay_url, start) == start
 
 
@@ -441,7 +400,7 @@ def test_replay_start_outside_the_stored_days_is_refused(
     engine, settings, replay_url, edge, shift
 ):
     """REQ-DAT-003: a start before the first or after the latest day is refused."""
-    start = edge(_load_history_around_start(engine, settings))
+    start = edge(load_history_around_start(engine, settings))
     start += timedelta(days=shift)
     with pytest.raises(ValueError):
         replay_next_day(engine, replay_url, start)
@@ -449,7 +408,7 @@ def test_replay_start_outside_the_stored_days_is_refused(
 
 def test_replay_at_the_latest_stored_day_has_nothing_left(engine, settings, replay_url):
     """REQ-DAT-003: once the latest stored day is copied, nothing is left to replay."""
-    latest = max(_load_history_around_start(engine, settings))
+    latest = max(load_history_around_start(engine, settings))
     replay_next_day(engine, replay_url, latest)
     assert replay_next_day(engine, replay_url, latest) is None
 

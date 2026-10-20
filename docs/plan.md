@@ -153,12 +153,12 @@ Each item lists what makes it done; a ticked box is done, an open box is still t
 - [ ] **2 Reproducible environment** (1)
   - [x] `pyproject.toml`, `uv.lock`, `.python-version`; works from a fresh clone
   - [x] Makefile targets `setup`, `db`, `load`, `update`, `api`, `test`
-  - [ ] Makefile targets `train`, `predict`
+  - [ ] Makefile targets `train`, `predict`, run in the project image like the other commands; trained models are kept in the project's `models/` folder (gitignored) until MLflow stores them (Phase 2, item 3)
 - [x] **3 PostgreSQL** (2): Compose file with only the database (exact image tag, data volume, credentials from `.env`); table `prices` keyed by (security, day)
 - [x] **4 One-time load script** (3, data source): loads the history of the agreed securities; a re-run creates no duplicates; API key read from `.env`
 - [ ] **5 Baseline training pipeline** (3; 4 for real data)
   - [x] `read_prices` reads the stored prices of one security
-  - [ ] a training function builds the target (next-day change), trains, compares with the persistence and mean-change baselines, saves the model to a gitignored folder
+  - [ ] a training function builds the target (next-day change), trains, compares with the persistence and mean-change baselines, saves the model under `MODEL_DIR`
   - [ ] a prediction function returns the next-day forecast for one security
   - [ ] unit tests for feature building
   - [ ] the acceptance tests of REQ-MOD-001–003 pass
@@ -193,14 +193,14 @@ Course checklist for this phase (`references/course-checklist.md`): MLflow track
 Each item is one complete piece that fits the interfaces below; it is merged only when it works. Depends on: in brackets.
 
 - [ ] **1 Phase 1 finished**: the open boxes of the Phase 1 plan; every acceptance test of phase 1 passes. Blocks items 3 and 4 and the training pipeline of item 7; the other items need no trained model.
-- [ ] **2 Project image and `api` service** (REQ-AUT-003)
-  - [ ] one image holds the project's code and its locked packages
-  - [ ] Compose runs the API from it next to the database
-  - [ ] paths (securities file, model store) no longer depend on the folder a command starts in
+- [x] **2 Project image and `api` service** (REQ-AUT-003, REQ-AUT-005, REQ-AUT-006)
+  - [x] one image holds the project's code and its locked packages; the commands run from it
+  - [x] Compose runs the API from it next to the database; the commands and the API share the project's `models/` folder
+  - [x] paths (securities file, `db/init`) do not depend on the folder a command starts in
 - [ ] **3 MLflow tracking** (1, 2; REQ-MOD-004)
   - [ ] MLflow in Compose, with its own database
   - [ ] every training run records its parameters, metrics, dataset version and model
-  - [ ] MLflow is the model store; the plain model folder (`MODEL_DIR`) is removed
+  - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed
 - [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
   - [ ] one registered model per security
   - [ ] a new model becomes production only if its mean absolute error on the evaluation window is lower than the production model's on the same days; a tie keeps the production model; the first model always becomes production
@@ -217,12 +217,12 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [ ] Airflow 3.3.2 in Compose, LocalExecutor; each task runs a project command in the project image (Airflow's own image holds none of the project's packages, so their versions never clash)
   - [ ] ingestion pipeline: the daily update, or one replayed day
   - [ ] training pipeline: train, then promote, for each security
-- [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005 and REQ-AUT-003
+- [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
 
 Optional, after item 7: API access (REQ-SVC-004), CI building the images (REQ-AUT-004).
 
 Interfaces to agree first, so items 2–7 can be built in parallel:
-- Commands: `update`, `replay`, `replay-reset`, `train`, `promote` (each `python -m forecasting.commands <name>` and a `make` target); Airflow runs the same commands.
+- Commands: `load` (`make load` and `make update`), `replay`, `replay-reset`, `train`, `promote` (each `python -m forecasting.commands <name>` run in the project image, and a `make` target); Airflow runs the same commands.
 - Registered model names: one per security, for example `forecast-AAPL.US`.
 - Settings: MLflow address, evaluation window (default 60 trading days), replay speed (trading days per minute), schedule.
 

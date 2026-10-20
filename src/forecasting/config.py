@@ -10,7 +10,11 @@ from sqlalchemy import URL
 
 from forecasting.trading_calendar import CALENDAR_START
 
-SECURITIES_FILE = Path("config/securities.toml")
+# The project is installed editable, so Python runs this file from the project folder,
+# as src/forecasting/config.py; paths found from it do not depend on the folder a
+# command starts in.
+PROJECT_DIR = Path(__file__).resolve().parents[2]
+SECURITIES_FILE = PROJECT_DIR / "config" / "securities.toml"
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,7 @@ def load_settings() -> Settings:
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-003, scope=function)
     @relation(REQ-DAT-007, scope=function)
+    @relation(REQ-AUT-005, scope=function)
 
     Returns:
         The settings of this deployment.

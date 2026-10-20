@@ -320,6 +320,26 @@ STATEMENT: >>>
 Every push runs linting and unit tests and builds the service images; a push to the main branch also publishes the images.
 <<<
 
+[REQUIREMENT]
+UID: REQ-AUT-005
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Test
+TITLE: Commands from any folder
+STATEMENT: >>>
+Each command of the system works the same whatever folder it is started from.
+<<<
+
+[REQUIREMENT]
+UID: REQ-AUT-006
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Inspection
+TITLE: One packaged environment
+STATEMENT: >>>
+The system's commands, and its services built from its own code, run in one packaged environment with the pinned package versions.
+<<<
+
 [[/SECTION]]
 
 [[SECTION]]

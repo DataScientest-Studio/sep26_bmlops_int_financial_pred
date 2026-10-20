@@ -1,3 +1,23 @@
+# Settings of the services that run from the project image.
+x-project: &project
+  build: .
+  image: financial-prediction:local
+  env_file: .env
+  # Inside Compose the database is reached by its service name and its own port.
+  environment:
+    POSTGRES_HOST: db
+    POSTGRES_PORT: "5432"
+  # A missing models folder stops the start, so Docker never creates it as root.
+  volumes:
+    - type: bind
+      source: ./models
+      target: /app/models
+      bind:
+        create_host_path: false
+  depends_on:
+    db:
+      condition: service_healthy
+
 services:
   db:
     image: postgres:18.6-bookworm
@@ -12,6 +32,29 @@ services:
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # Runs one project command and exits, for example through `make load`; left out of
+  # `docker compose up`.
+  commands:
+    <<: *project
+    profiles: [commands]
+    entrypoint: [run-as-owner, python, -m, forecasting.commands]
+
+  api:
+    <<: *project
+    # Listens on every address inside its container; the host publishes it on 127.0.0.1.
+    command: [uvicorn, "forecasting.api.app:app", --host, 0.0.0.0, --port, "8000"]
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8000/health")
       interval: 2s
       timeout: 5s
       retries: 15

@@ -1,6 +1,6 @@
 """Stand-ins for outside systems, so tests need no network."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import numpy as np
 import pandas as pd
@@ -120,4 +120,25 @@ def standard_source(
         },
         splits=splits,
         dividends=dividends,
+    )
+
+
+def source_around(day: date) -> FakeSource:
+    """Deliver two months of prices, a split and a dividend on both sides of `day`."""
+    start = (day - timedelta(days=30)).isoformat()
+    end = (day + timedelta(days=30)).isoformat()
+    before = day - timedelta(days=10)
+    after = day + timedelta(days=10)
+
+    return FakeSource(
+        {
+            s.symbol: price_history(s.exchange, start, end, seed=i)
+            for i, s in enumerate(SECURITIES + INDICES)
+        },
+        splits={"TEST.US": pd.DataFrame({"day": [before, after], "ratio": [2.0, 3.0]})},
+        dividends={
+            "TEST.US": pd.DataFrame(
+                {"day": [before, after], "amount": [0.25, 0.30], "currency": "USD"}
+            )
+        },
     )

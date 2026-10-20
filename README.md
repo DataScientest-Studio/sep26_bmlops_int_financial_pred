@@ -18,7 +18,9 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── pyproject.toml               project metadata and packages
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
-├── compose.yaml                 services run in Docker: the PostgreSQL database
+├── Dockerfile                   project image: the code with its locked packages, for the commands and the API
+├── .dockerignore                what the project image is built from
+├── compose.yaml                 services run in Docker: the PostgreSQL database, the API, and the project commands on demand
 ├── .env.example                 template for the local .env (database login, model folder, first day of history, replay start, EODHD key)
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
@@ -49,6 +51,7 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── course-checklist.md      what to build, per phase
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
+├── models/                      trained models, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset)
 │   ├── config.py                settings from .env and config/
@@ -70,7 +73,8 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── conftest.py              shared fixtures: a test database per worker, API client
 │   └── fakes.py                 stand-in data source with generated prices
 └── tools/
-    └── export-requirements.sh   regenerates docs/requirements.md
+    ├── export-requirements.sh   regenerates docs/requirements.md
+    └── run-as-owner.sh          starts the project image's commands and API as the owner of models/
 ```
 
 ## Setup
@@ -80,16 +84,18 @@ Needs [uv](https://docs.astral.sh/uv/), `make` and Docker with Compose. From a f
 cp .env.example .env      # then add your own EODHD key (see "EODHD key" below); keep the development login
 make setup                # Python environment in .venv/
 make db                   # starts PostgreSQL, waits until it is ready
-make load                 # loads the price history from EODHD into the database
+make load                 # builds the project image, loads the price history from EODHD
 ```
 
 After that, `make update` once a day adds the new trading days.
 
 `.env` needs every setting of `.env.example`; a missing one is named in the error of the first command or API request that reads the settings.
 
-`make setup` installs the Python version from `.python-version` if missing and creates `.venv/` with the packages pinned in `uv.lock`.
+`make setup` installs the Python version from `.python-version` if missing and creates `.venv/` with the packages pinned in `uv.lock`; tests and checks run from it.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
+
+`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -103,7 +109,8 @@ After that, `make update` once a day adds the new trading days.
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
 | `make contract` | checks how EODHD delivers data, with your own key from `.env`; a check your key's history, remaining calls or plan cannot support is skipped with its reason |
-| `make api` | API on http://localhost:8000, documentation at `/docs` |
+| `make api` | start the API on http://localhost:8000, documentation at `/docs`; returns once it answers |
+| `make api-stop` | stop the API |
 
 `make db-shell` opens an SQL prompt (`\q` leaves it). For example, the latest day stored per security:
 

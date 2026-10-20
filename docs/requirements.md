@@ -234,6 +234,24 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 **Statement**: Every push runs linting and unit tests and builds the service images; a push to the main branch also publishes the images.
 
+### Commands from any folder
+
+**UID**: REQ-AUT-005 \
+**Status**: Draft \
+**Tags**: phase-2 \
+**VERIFICATION**: Test
+
+**Statement**: Each command of the system works the same whatever folder it is started from.
+
+### One packaged environment
+
+**UID**: REQ-AUT-006 \
+**Status**: Draft \
+**Tags**: phase-2 \
+**VERIFICATION**: Inspection
+
+**Statement**: The system's commands, and its services built from its own code, run in one packaged environment with the pinned package versions.
+
 ## Monitoring
 
 ### Training data drift
