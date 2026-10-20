@@ -2,12 +2,12 @@
 
 from datetime import date, datetime
 
-import exchange_calendars
 import numpy as np
 import pandas as pd
 
 from forecasting.config import Security
 from forecasting.db import DIVIDEND_COLUMNS, SPLIT_COLUMNS
+from forecasting.trading_calendar import trading_days
 
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
 INDICES = (Security("TEST.INDX", "XNYS"),)
@@ -26,12 +26,13 @@ def price_history(exchange: str, start: str, end: str, seed: int) -> pd.DataFram
     Returns:
         One row per trading day with the price columns of the database.
     """
-    days = exchange_calendars.get_calendar(exchange).sessions_in_range(start, end)
+    days = trading_days(exchange, date.fromisoformat(start), date.fromisoformat(end))
     rng = np.random.default_rng(seed)
     close = 100 * np.exp(np.cumsum(rng.normal(0, 0.01, len(days))))
+
     return pd.DataFrame(
         {
-            "day": days.date,
+            "day": days,
             "open": close * (1 + rng.normal(0, 0.002, len(days))),
             "high": close * 1.01,
             "low": close * 0.99,

@@ -1,4 +1,8 @@
-.PHONY: setup requirements lint db db-stop db-shell load update test acceptance contract api
+.PHONY: setup requirements lint \
+        db db-stop db-shell \
+        load update replay replay-reset \
+        test acceptance contract \
+        api
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
@@ -35,6 +39,15 @@ db-shell:
 # one on. Both names run the same load.
 update load:
 	uv run --env-file .env python -m forecasting.commands load
+
+# Copies the next stored day from the database into the replay database; the first run
+# fills it up to REPLAY_START. Prints the day replayed.
+replay:
+	uv run --env-file .env python -m forecasting.commands replay
+
+# Deletes the replay database; the next replay starts over from REPLAY_START.
+replay-reset:
+	uv run --env-file .env python -m forecasting.commands replay-reset
 
 # Tests see only the settings of .env.example: the shell's own variables are cleared,
 # apart from PATH and HOME, which uv needs.

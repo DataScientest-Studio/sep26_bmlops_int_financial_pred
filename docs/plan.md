@@ -209,9 +209,9 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [ ] each training run's input data gets a version id from DVC without Git; the snapshot is a record, training reads from the database
   - [ ] MLflow records it with the run
 - [ ] **6 Replay** (7 for the speed; REQ-DAT-003)
-  - [ ] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
-  - [ ] the first run creates the replay database and fills it up to `REPLAY_START` (between the first and the latest stored day); at the latest stored day there is nothing left to replay; `make replay-reset` deletes the replay database, so the next run starts over from `REPLAY_START`; with nothing stored, replay is refused
-  - [ ] the member's own database is only read; replay makes no EODHD calls
+  - [x] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
+  - [x] the first run creates the replay database and fills it up to `REPLAY_START` (between the first and the latest stored day); at the latest stored day there is nothing left to replay; `make replay-reset` deletes the replay database, so the next run starts over from `REPLAY_START`; with nothing stored, replay is refused
+  - [x] the member's own database is only read; replay makes no EODHD calls
   - [ ] the replay speed (trading days per minute) is the schedule of the Airflow ingestion pipeline (item 7)
 - [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001)
   - [ ] Airflow 3.3.2 in Compose, LocalExecutor; each task runs a project command in the project image (Airflow's own image holds none of the project's packages, so their versions never clash)
