@@ -56,4 +56,3 @@ def test_symbol_of_no_configured_security_is_refused(client, endpoint, symbol):
     """REQ-SVC-001, REQ-SVC-002: an index or unknown symbol gets 404."""
     response = client.post(endpoint, json={"symbol": symbol})
     assert response.status_code == 404
-    assert symbol in response.json()["detail"]

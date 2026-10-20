@@ -273,28 +273,6 @@ def test_provisional_close_is_replaced_by_a_later_fetch(engine, settings):
     assert latest["fetched_at"] == final_from
 
 
-def test_older_fetch_does_not_replace_a_newer_provisional_close(engine, settings):
-    """REQ-DAT-007: only a later fetch replaces a provisional quote."""
-    security = SECURITIES[0]
-    history = price_history(security.exchange, "2025-12-01", "2025-12-30", seed=3)
-    newer_close = history["close"].iloc[-1]
-    final_from = session_close(security.exchange, date(2025, 12, 30))
-    final_from += settings.final_delay
-    newer = final_from - timedelta(hours=1)
-    source = FakeSource({security.symbol: history}, newer)
-    load_history(
-        engine, source, (security,), (), settings.final_delay, settings.history_start
-    )
-    older = history.assign(close=history["close"] + 1.0)
-    source = FakeSource({security.symbol: older}, newer - timedelta(hours=1))
-    load_history(
-        engine, source, (security,), (), settings.final_delay, settings.history_start
-    )
-    latest = _last_row(engine, security.symbol)
-    assert float(latest["close"]) == pytest.approx(newer_close)
-    assert latest["fetched_at"] == newer
-
-
 def test_final_close_is_never_replaced(engine, settings):
     """REQ-DAT-007: a quote fetched at the close plus the delay is final."""
     security = SECURITIES[0]

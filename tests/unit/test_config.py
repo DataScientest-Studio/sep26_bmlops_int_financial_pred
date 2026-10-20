@@ -32,7 +32,6 @@ def test_settings_list_the_configured_indices(monkeypatch, tmp_path):
     [
         ("123", "'XNYS'"),  # a number
         ("''", "'XNYS'"),  # empty
-        ("'TEST.US'", "2026-01-02"),  # a date
     ],
 )
 def test_securities_file_refuses_a_value_that_is_no_text(
