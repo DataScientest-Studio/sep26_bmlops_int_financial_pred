@@ -12,93 +12,106 @@ TO DO (see parts with '?'):
   somewhere with choices?).
 """
 
-# general
 import glob
 import os
+from dataclasses import dataclass
 from datetime import datetime
 
 import joblib
-import pandas as pd
-
-# load env variables
-# username, password, host, port, and database name stored in .env file locally
-# use .gitignore so the file is NOT tracked!
 from dotenv import load_dotenv
+from sqlalchemy import Engine, create_engine
 
-# data
-from sqlalchemy import create_engine
+from forecasting import db
+from forecasting.config import Settings
 
 load_dotenv()  # Loads variables from the .env file
-# Load credentials securely from environment variables
-db_user = os.getenv("DB_USER")
-db_password = os.getenv("DB_PASSWORD")
-db_host = os.getenv("DB_HOST", "localhost")
-db_name = os.getenv("DB_NAME")
-# ALTERNATIVE: save each variable separetely in github secrets > actions
-# > new repo secret
-# connect to postgresql
 
-# dir for model and logs
 LOG_FILE = "logs/predict.logs"
 MODEL_PATH = "models"
 
 
-# log functions
-def log_message(level, message):
-    """Function to log messages with timestamps console and log file."""
+@dataclass
+class ForecastResult:
+    """Container for prediction results returned to API endpoints."""
+
+    symbol: str
+    prediction: float
+    date: str
+    model_version: str
+
+
+def log_message(level: str, message: str) -> None:
+    """Log messages with timestamps to console and log file."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] {level}: {message}"
     print(log_entry)
 
 
-# main script
-def main():
-    """Loading latest model, data then predict."""
-    log_message("START", "Starting prediction execution.")
+def predict(engine: Engine, settings: Settings, symbol: str) -> ForecastResult:
+    """Run the prediction pipeline for a specific security symbol."""
+    log_message("START", f"Starting prediction execution for symbol: {symbol}")
 
-    """ find the most recent model file in MODEL_PATH """
-    model_files = glob.glob("models/linear_regression_model_*.pkl")
-
+    model_files = glob.glob(os.path.join(MODEL_PATH, "linear_regression_model_*.pkl"))
     if not model_files:
-        log_message("ERROR", f"No trained model files found in {MODEL_PATH} directory")
-    # Sort by modification time or filename to get the latest one
+        raise FileNotFoundError(
+            f"No trained model files found in {MODEL_PATH} directory"
+        )
+
     latest_model_path = max(model_files, key=os.path.getmtime)
     log_message("SUCCESS", f"Loading model from: {latest_model_path}")
 
-    # Load model
+    model = joblib.load(latest_model_path)
+
+    # Fixed: db.read_prices only takes engine and symbol
+    df = db.read_prices(engine, symbol=symbol)
+
+    if df.empty:
+        raise ValueError(f"No data found in the database for symbol: {symbol}")
+
+    if "close_price" in df.columns:
+        target_col = "close_price"
+    elif "close price" in df.columns:
+        target_col = "close price"
+    else:
+        target_col = df.columns[-1]
+
+    X = df.drop(["date", target_col], axis=1, errors="ignore")
+    if X.empty:
+        X = df[[target_col]]
+
+    predictions = model.predict(X)
+
+    latest_pred = float(predictions[-1])
+    latest_date = str(df["date"].iloc[-1])
+    model_version = os.path.basename(latest_model_path)
+
+    log_message("END", "Prediction finished successfully.")
+
+    return ForecastResult(
+        symbol=symbol,
+        prediction=latest_pred,
+        date=latest_date,
+        model_version=model_version,
+    )
+
+
+def main() -> None:
+    """CLI entry point for running predictions directly."""
+    db_user = os.getenv("DB_USER")
+    db_password = os.getenv("DB_PASSWORD")
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_name = os.getenv("DB_NAME")
+
+    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
+    engine = create_engine(db_url)
+    settings = Settings()  # type: ignore
+
     try:
-        model = joblib.load(latest_model_path)
-
-        """load new data to make predictions on"""
-        # change depending on what this should be?
-        db_url = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
-        engine = create_engine(db_url)
-
-        # query data and load into a dataframe
-        # change query?
-        query = "SELECT stocks, date FROM stock_data;"
-        df = pd.read_sql(query, con=engine)
-        # check data
-        if df.empty:
-            log_message("ERROR", "No data found in the database to predict.")
-
-        # ensure columns match the exact features the model was trained on
-        # change variable name?
-        X = df["stocks"]
-        # drop missing values?
-        """predictions"""
-        predictions = model.predict(X)
-
-        # output results
-        df["predicted_price"] = predictions
-        log_message("PREDICTIONS", f"{df}")
-
+        result = predict(engine, settings, symbol="AAPL")
+        log_message("PREDICTIONS", f"{result}")
     except Exception as e:
         log_message("ERROR", f"An unexpected error occurred during prediction: {e!s}")
         exit(1)
-
-    log_message("END", "Prediction finished.")
-    log_message("SEPARATOR", "-" * 66)
 
 
 if __name__ == "__main__":

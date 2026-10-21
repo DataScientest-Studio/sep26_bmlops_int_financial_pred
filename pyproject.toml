@@ -5,11 +5,13 @@ description = "Next-day price change forecasting service with an automated MLOps
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "dotenv>=0.9.9",
     "exchange-calendars>=4.13.2",
     "fastapi>=0.143.0",
     "httpx2>=2.13.1",
     "pandas>=3.0.6",
     "psycopg[binary]>=3.3.6",
+    "python-dotenv>=1.2.4",
     "scikit-learn>=1.9.1",
     "sqlalchemy>=2.1.4",
     "uvicorn>=0.54.0",
