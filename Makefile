@@ -2,7 +2,8 @@
         db db-stop db-shell \
         load update replay replay-reset \
         test acceptance contract \
-        api api-stop
+        api api-stop \
+        airflow airflow-stop
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
@@ -80,3 +81,16 @@ api:
 # Stops the API.
 api-stop:
 	docker compose stop api
+
+# Airflow's services that keep running; its database and init steps run once on the way.
+AIRFLOW_SERVICES = airflow-apiserver airflow-scheduler airflow-dag-processor
+
+# Starts Airflow with the database and the data service, rebuilt when the code changed;
+# returns once its page answers on http://localhost:8080 (AIRFLOW_PORT in .env).
+airflow:
+	mkdir -p models
+	docker compose up --build --detach --wait $(AIRFLOW_SERVICES)
+
+# Stops Airflow and the data service; the database keeps running.
+airflow-stop:
+	docker compose stop $(AIRFLOW_SERVICES) data

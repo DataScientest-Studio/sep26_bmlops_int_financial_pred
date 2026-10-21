@@ -18,6 +18,26 @@ x-project: &project
     db:
       condition: service_healthy
 
+# Settings of the Airflow services: only what Airflow and its pipelines read.
+x-airflow: &airflow
+  image: apache/airflow:3.3.2-python3.12
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${AIRFLOW_DB_PASSWORD:?set in .env}@db:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:?set in .env}
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.api_fastapi.auth.managers.simple.simple_auth_manager.SimpleAuthManager
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
+    AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?set in .env}
+    # Read by the daily update pipeline.
+    FINAL_DELAY_MINUTES: ${FINAL_DELAY_MINUTES:?set in .env}
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags:ro
+    - airflow-logs:/opt/airflow/logs
+
 services:
   db:
     image: postgres:18.6-bookworm
@@ -74,5 +94,97 @@ services:
       timeout: 5s
       retries: 15
 
+  # Creates Airflow's database and its login on the project's server when missing.
+  airflow-database:
+    image: postgres:18.6-bookworm
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:?set in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      PGDATABASE: ${POSTGRES_DB:?set in .env}
+      AIRFLOW_DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:?set in .env}
+    command:
+      - sh
+      - -c
+      - >-
+        psql -v ON_ERROR_STOP=1 -v password="$$AIRFLOW_DB_PASSWORD"
+        -f /airflow/create-database.sql
+    volumes:
+      - ./airflow/create-database.sql:/airflow/create-database.sql:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Creates or upgrades Airflow's tables, then exits.
+  airflow-init:
+    <<: *airflow
+    command: [db, migrate]
+    depends_on:
+      airflow-database:
+        condition: service_completed_successfully
+
+  # The Airflow page on 127.0.0.1: writes the admin password from .env into the file
+  # Airflow's login reads, then starts.
+  airflow-apiserver:
+    <<: *airflow
+    command:
+      - bash
+      - -c
+      - |
+        set -e
+        python - <<'EOF'
+        import json
+        import os
+
+        path = os.environ["AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE"]
+        with open(path, "w") as file:
+            json.dump({"admin": os.environ["AIRFLOW_ADMIN_PASSWORD"]}, file)
+        EOF
+        exec airflow api-server
+    ports:
+      - "127.0.0.1:${AIRFLOW_PORT:?set in .env}:8080"
+    # Airflow takes longer to start than the project's services: up to 2.5 minutes.
+    healthcheck:
+      test: [CMD, curl, --fail, http://localhost:8080/api/v2/monitor/health]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  # Starts the pipeline runs on their schedule and runs their tasks.
+  airflow-scheduler:
+    <<: *airflow
+    command: [scheduler]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      data:
+        condition: service_healthy
+
+  # Reads the pipelines in airflow/dags.
+  airflow-dag-processor:
+    <<: *airflow
+    command: [dag-processor]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - airflow jobs check --job-type DagProcessorJob --hostname "$${HOSTNAME}"
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
 volumes:
   db-data:
+  airflow-logs:

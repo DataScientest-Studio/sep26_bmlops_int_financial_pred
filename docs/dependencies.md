@@ -25,6 +25,15 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 | pyright | Type checker: finds calls with arguments or results of the wrong type before the code runs. VS Code's Pylance is built on it, so the editor and `make lint` report the same. The `nodejs` extra installs the Node.js runtime it needs. | `make lint` (also on every push). |
 | pandas-stubs | Type information for pandas, published by the pandas project: tells the type checker what each pandas call accepts and returns. | Correct type checks of pandas code (pyright, Pylance). |
 
+## In Airflow's image
+
+The pipelines in `airflow/dags/` run in Airflow's own image, which holds none of the project's packages; they use only packages that image brings along.
+
+| Package | What it does | Used for |
+|---|---|---|
+| requests | HTTP client library: sends requests to web services and reads their answers. | The pipelines' calls to the data service. |
+| pendulum | Dates and times with time zones. | The pipelines' schedule and the New York day. |
+
 ## Tools run without installing
 
 | Tool | What it does | Used for |

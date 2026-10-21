@@ -216,10 +216,10 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [x] the member's own database is only read; replay makes no EODHD calls
   - [ ] the replay speed (`REPLAY_DAYS_PER_MINUTE`, more than 0 and at most 6) sets the schedule of the replay pipeline (item 7)
 - [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001)
-  - [ ] Airflow 3.3.2 in Compose, LocalExecutor, with its own database `airflow` on the project's PostgreSQL server, created when missing; its page on `127.0.0.1:${AIRFLOW_PORT}`, with a login for one admin user, whose password is set in `.env`
-  - [ ] each task calls a service built from the project image over the Compose network, so Airflow's own image holds none of the project's packages and needs no access to Docker; Airflow receives only the settings its pipelines read, never the EODHD key
+  - [x] Airflow 3.3.2 in Compose, LocalExecutor, with its own database `airflow` on the project's PostgreSQL server, created when missing, and its own login, which owns only that database; its page on `127.0.0.1:${AIRFLOW_PORT}`, with a login for one admin user, whose password is set in `.env`
+  - [x] each task calls a service built from the project image over the Compose network, so Airflow's own image holds none of the project's packages and needs no access to Docker; Airflow receives only the settings its pipelines read, never the EODHD key
   - [x] data service: `POST /load` runs the load and answers with its report, `POST /replay` copies the next day and answers with it (none when nothing is left); reachable only inside Compose
-  - [ ] daily update pipeline: one load on weekdays at 16:00 New York time plus `FINAL_DELAY_MINUTES`; never retried, since one load uses the free tier's day
+  - [x] daily update pipeline: one load on weekdays at 16:00 New York time plus `FINAL_DELAY_MINUTES`; never retried, since one load uses the free tier's day
   - [ ] replay pipeline: one replayed day every 60 / `REPLAY_DAYS_PER_MINUTE` seconds
   - [ ] both pipelines start paused, the operator unpauses one of them; neither catches up on missed runs, and each runs once at a time
   - [ ] training pipeline: train, then promote, for each security. While replay runs, training, forecasts and the API read the replay database, never the member's own; models trained during replay are kept apart from the member's own models (for example their own registered names, `replay-forecast-AAPL.US`); the mode follows the unpaused ingestion pipeline
