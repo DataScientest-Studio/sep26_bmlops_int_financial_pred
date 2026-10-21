@@ -19,7 +19,6 @@ SAVE_QUOTE = text(
         open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low,
         close = EXCLUDED.close, volume = EXCLUDED.volume,
         fetched_at = EXCLUDED.fetched_at
-    WHERE prices.fetched_at < :final_from AND prices.fetched_at < EXCLUDED.fetched_at
     """
 )
 
@@ -341,10 +340,7 @@ def load_history(
                     replaced += 1
                 else:
                     continue
-                # The database itself replaces only a provisional quote and only with
-                # a later fetch; final_from tells it from when a quote is final.
-                final_from = _final_from(security.exchange, day, final_delay)
-                row = {**quote, "symbol": security.symbol, "final_from": final_from}
+                row = {**quote, "symbol": security.symbol}
                 to_save.append(row)
             if to_save:
                 connection.execute(SAVE_QUOTE, to_save)
