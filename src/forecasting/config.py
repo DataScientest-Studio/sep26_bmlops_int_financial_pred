@@ -55,6 +55,7 @@ class Settings:
         replay_database_url: SQLAlchemy URL of the database replay copies into, named
             after the project database with `_replay`.
         replay_start: Simulated today of the first replay run.
+        evaluation_days: Latest trading days held back from training for evaluation.
     """
 
     database_url: str = field(repr=False)
@@ -65,14 +66,21 @@ class Settings:
     history_start: date
     replay_database_url: str = field(repr=False)
     replay_start: date
+    evaluation_days: int
+
+    def exchange_of(self, symbol: str) -> str:
+        """Return the exchange of a security; the symbol must be a configured one."""
+        # next takes the first item the generator yields: the exchange of the first
+        # security with that symbol.
+        return next(s.exchange for s in self.securities if s.symbol == symbol)
 
 
 def load_settings() -> Settings:
     """Read the settings from the environment and the securities file.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES, HISTORY_START and REPLAY_START. A
-    missing variable raises KeyError.
+    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES, HISTORY_START, REPLAY_START and
+    EVALUATION_DAYS. A missing variable raises KeyError.
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-003, scope=function)
@@ -84,7 +92,7 @@ def load_settings() -> Settings:
 
     Raises:
         ValueError: If HISTORY_START lies before the first day the trading calendar
-            knows.
+            knows, or EVALUATION_DAYS is below 1.
     """
     env = os.environ
     # URL.create escapes characters with a meaning in URLs, such as @ in a password.
@@ -109,6 +117,10 @@ def load_settings() -> Settings:
     history_start = date.fromisoformat(env["HISTORY_START"])
     if history_start < CALENDAR_START:
         raise ValueError(f"HISTORY_START must be {CALENDAR_START} or later")
+    # The upper limit depends on each security's stored history; train checks it.
+    evaluation_days = int(env["EVALUATION_DAYS"])
+    if evaluation_days < 1:
+        raise ValueError("EVALUATION_DAYS must be 1 or more")
 
     return Settings(
         database_url=database_url.render_as_string(hide_password=False),
@@ -119,4 +131,5 @@ def load_settings() -> Settings:
         history_start=history_start,
         replay_database_url=replay_database_url.render_as_string(hide_password=False),
         replay_start=date.fromisoformat(env["REPLAY_START"]),
+        evaluation_days=evaluation_days,
     )

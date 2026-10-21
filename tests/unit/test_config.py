@@ -56,3 +56,26 @@ def test_history_start_before_the_calendar_is_refused(monkeypatch, tmp_path):
     monkeypatch.setenv("HISTORY_START", "1979-12-31")
     with pytest.raises(ValueError, match="HISTORY_START"):
         load_settings()
+
+
+def test_one_evaluation_day_is_accepted(monkeypatch, tmp_path):
+    """An EVALUATION_DAYS of 1 is accepted."""
+    _use_securities_file(
+        monkeypatch,
+        tmp_path,
+        "[[securities]]\nsymbol = 'TEST.US'\nexchange = 'XNYS'\n\n" + INDEX_ENTRY,
+    )
+    monkeypatch.setenv("EVALUATION_DAYS", "1")
+    assert load_settings().evaluation_days == 1
+
+
+def test_no_evaluation_days_is_refused(monkeypatch, tmp_path):
+    """An EVALUATION_DAYS below 1 is refused."""
+    _use_securities_file(
+        monkeypatch,
+        tmp_path,
+        "[[securities]]\nsymbol = 'TEST.US'\nexchange = 'XNYS'\n\n" + INDEX_ENTRY,
+    )
+    monkeypatch.setenv("EVALUATION_DAYS", "0")
+    with pytest.raises(ValueError):
+        load_settings()

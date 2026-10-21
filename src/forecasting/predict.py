@@ -3,9 +3,13 @@
 from dataclasses import dataclass
 from datetime import date, datetime
 
+import joblib
 from sqlalchemy import Engine
 
 from forecasting.config import Settings
+from forecasting.db import read_prices
+from forecasting.features import build_features
+from forecasting.trading_calendar import next_trading_day
 
 
 @dataclass(frozen=True)
@@ -48,4 +52,31 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
         The forecast with the version of the model that produced it, and the close it
         starts from with the time that close was fetched.
     """
-    raise NotImplementedError
+    prices = read_prices(engine, symbol)
+    # The latest stored day, as one row; the forecast starts from its close, which may
+    # still be provisional.
+    latest = prices.iloc[-1]
+    # Model files are named by the UTC time of their training run, and such names sort
+    # in time order, so the largest name is the newest model.
+    model_file = max((settings.model_dir / symbol).glob("*.joblib"))
+    model = joblib.load(model_file)
+    # The model is a formula over the features, so it needs today's values of them.
+    # build_features computes every day exactly as in training; the longest volatility
+    # window needs that many changes, plus one close before them. The double brackets
+    # keep the latest row as a one-row table, the shape predict expects.
+    features = build_features(prices).iloc[[-1]]
+    # predict returns one value per row; [0] takes the only one, float turns numpy's
+    # number into a plain Python float.
+    change = float(model.predict(features)[0])
+
+    # The file name without .joblib (stem) is the model version. The forecast is for
+    # the next trading day: the exchange's calendar skips weekends and holidays, so a
+    # Friday close forecasts Monday.
+    return Forecast(
+        symbol=symbol,
+        day=next_trading_day(settings.exchange_of(symbol), latest["day"]),
+        change=change,
+        model_version=model_file.stem,
+        start_close=float(latest["close"]),
+        start_fetched_at=latest["fetched_at"],
+    )

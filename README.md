@@ -7,7 +7,7 @@ Forecasts the next trading day's price change of a security and offers the forec
 Group project of the DataScientest MLOps bootcamp (sep26 cohort).
 
 ## Status
-Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`), and so does replaying stored history day by day (`make replay`); training, forecasts and the app are not built yet.
+Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`), and so do replaying stored history day by day (`make replay`), training a model per security and forecasting the next trading day (`make train`, `make predict`, and the API); monitoring and the app are not built yet.
 
 ## Project structure
 ```
@@ -51,9 +51,9 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── course-checklist.md      what to build, per phase
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
-├── models/                      trained models, written by the commands and the API in Docker (gitignored)
+├── models/                      trained models, one folder per security, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
-│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset)
+│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict)
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices, creating and dropping databases
 │   ├── trading_calendar.py      trading days of each exchange
@@ -95,7 +95,7 @@ After that, `make update` once a day adds the new trading days.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
 
-`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. `docker compose logs api` shows the API's output, errors included.
+`make load`, `make update`, `make replay`, `make replay-reset`, `make train`, `make predict` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -105,6 +105,8 @@ After that, `make update` once a day adds the new trading days.
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
 | `make replay-reset` | delete the replay database; the next `make replay` starts over from `REPLAY_START` |
+| `make train` | train a model for each configured security on its final closes, holding back the latest `EVALUATION_DAYS` trading days to score it; saves it in `models/` and prints its error next to the two baselines, "no change" and the mean change |
+| `make predict` | print each security's forecast for the next trading day from its newest model, with the close it starts from |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
