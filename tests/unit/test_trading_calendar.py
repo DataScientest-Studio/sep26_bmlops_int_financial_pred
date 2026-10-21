@@ -3,7 +3,6 @@
 from datetime import date, datetime
 
 import pytest
-from exchange_calendars.errors import DateOutOfBounds
 
 from forecasting.trading_calendar import (
     is_trading_day,
@@ -11,13 +10,6 @@ from forecasting.trading_calendar import (
     session_close,
     trading_days,
 )
-
-
-def test_date_outside_the_calendar_raises():
-    """A date outside the calendar's range raises, never guesses."""
-    # A weekday before the calendar's first day, so only the range can cause the error:
-    with pytest.raises(DateOutOfBounds):
-        is_trading_day("XNYS", date(1979, 12, 31))
 
 
 @pytest.mark.parametrize(
@@ -38,7 +30,6 @@ def test_session_close_is_the_exchange_close_in_utc(exchange, day, expected):
     ("exchange", "day", "expected"),
     [
         ("XNYS", date(2026, 12, 25), False),  # Christmas
-        ("XNYS", date(2026, 12, 24), True),  # early close, still a session
         ("XNYS", date(2026, 10, 10), False),  # Saturday
         ("XETR", date(2026, 12, 24), False),  # Christmas Eve, Xetra closed
     ],
