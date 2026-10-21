@@ -1,51 +1,105 @@
-"""Forecast of the next trading day's change of one security."""
+"""Predict using a linear regression model using data from a PostgreSQL database.
 
-from dataclasses import dataclass
-from datetime import date, datetime
+This script:
+  - loads latest model,
+  - returns prediction for data using latest model,
+  - the data is provided here in the file as EXAMPLE.
 
-from sqlalchemy import Engine
+TO DO (see parts with '?'):
+  - add the right paths in the beginning,
+  - create .env file for user name etc. or add github secrets,
+  - change data source (user gives data as input or loaded from
+  somewhere with choices?).
+"""
 
-from forecasting.config import Settings
+# general
+import glob
+import os
+from datetime import datetime
+
+import joblib
+import pandas as pd
+
+# load env variables
+# username, password, host, port, and database name stored in .env file locally
+# use .gitignore so the file is NOT tracked!
+from dotenv import load_dotenv
+
+# data
+from sqlalchemy import create_engine
+
+load_dotenv()  # Loads variables from the .env file
+# Load credentials securely from environment variables
+db_user = os.getenv("DB_USER")
+db_password = os.getenv("DB_PASSWORD")
+db_host = os.getenv("DB_HOST", "localhost")
+db_name = os.getenv("DB_NAME")
+# ALTERNATIVE: save each variable separetely in github secrets > actions
+# > new repo secret
+# connect to postgresql
+
+# dir for model and logs
+LOG_FILE = "logs/predict.logs"
+MODEL_PATH = "models"
 
 
-@dataclass(frozen=True)
-class Forecast:
-    """A forecast for one security.
-
-    @relation(REQ-SVC-001, scope=class)
-
-    Attributes:
-        symbol: Ticker of the security.
-        day: The trading day the forecast is for.
-        change: Predicted relative close-to-close change to `day`.
-        model_version: Identifier of the model that produced it.
-        start_close: The stored close the change starts from: the latest day's close,
-            which may still be provisional.
-        start_fetched_at: When that close was fetched; it is final if fetched at or
-            after its exchange's close that day plus the set delay.
-    """
-
-    symbol: str
-    day: date
-    change: float
-    model_version: str
-    start_close: float
-    start_fetched_at: datetime
+# log functions
+def log_message(level, message):
+    """Function to log messages with timestamps console and log file."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_entry = f"[{timestamp}] {level}: {message}"
+    print(log_entry)
 
 
-def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
-    """Forecast the change from the latest stored day to the next trading day.
+# main script
+def main():
+    """Loading latest model, data then predict."""
+    log_message("START", "Starting prediction execution.")
 
-    @relation(REQ-MOD-001, scope=function)
-    @relation(REQ-SVC-001, scope=function)
+    """ find the most recent model file in MODEL_PATH """
+    model_files = glob.glob("models/linear_regression_model_*.pkl")
 
-    Args:
-        engine: Engine of the project database.
-        settings: Settings; the model is read from `settings.model_dir`.
-        symbol: Ticker of the security.
+    if not model_files:
+        log_message("ERROR", f"No trained model files found in {MODEL_PATH} directory")
+    # Sort by modification time or filename to get the latest one
+    latest_model_path = max(model_files, key=os.path.getmtime)
+    log_message("SUCCESS", f"Loading model from: {latest_model_path}")
 
-    Returns:
-        The forecast with the version of the model that produced it, and the close it
-        starts from with the time that close was fetched.
-    """
-    raise NotImplementedError
+    # Load model
+    try:
+        model = joblib.load(latest_model_path)
+
+        """load new data to make predictions on"""
+        # change depending on what this should be?
+        db_url = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
+        engine = create_engine(db_url)
+
+        # query data and load into a dataframe
+        # change query?
+        query = "SELECT stocks, date FROM stock_data;"
+        df = pd.read_sql(query, con=engine)
+        # check data
+        if df.empty:
+            log_message("ERROR", "No data found in the database to predict.")
+
+        # ensure columns match the exact features the model was trained on
+        # change variable name?
+        X = df["stocks"]
+        # drop missing values?
+        """predictions"""
+        predictions = model.predict(X)
+
+        # output results
+        df["predicted_price"] = predictions
+        log_message("PREDICTIONS", f"{df}")
+
+    except Exception as e:
+        log_message("ERROR", f"An unexpected error occurred during prediction: {e!s}")
+        exit(1)
+
+    log_message("END", "Prediction finished.")
+    log_message("SEPARATOR", "-" * 66)
+
+
+if __name__ == "__main__":
+    main()
