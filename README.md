@@ -18,9 +18,9 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── pyproject.toml               project metadata and packages
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
-├── Dockerfile                   project image: the code with its locked packages, for the commands and the API
+├── Dockerfile                   project image: the code with its locked packages, for the commands, the API and the data service
 ├── .dockerignore                what the project image is built from
-├── compose.yaml                 services run in Docker: the PostgreSQL database, the API, and the project commands on demand
+├── compose.yaml                 services run in Docker: the PostgreSQL database, the API, the data service, and the project commands on demand
 ├── .env.example                 template for the local .env (database login, model folder, first day of history, replay start, EODHD key)
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
@@ -53,7 +53,8 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   └── evaluation.md            what is graded, defense format
 ├── models/                      trained models, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
-│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset)
+│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset); the data service runs the same load and replay
+│   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices, creating and dropping databases
 │   ├── trading_calendar.py      trading days of each exchange
@@ -69,12 +70,12 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── tests/
 │   ├── acceptance/              black-box tests, one or more per testable requirement
 │   ├── contract/                checks of how EODHD delivers data, run with your own key
-│   ├── unit/                    tests of single functions and the API wiring
+│   ├── unit/                    tests of single functions and the wiring of the API and the data service
 │   ├── conftest.py              shared fixtures: a test database per worker, API client
 │   └── fakes.py                 stand-in data source with generated prices
 └── tools/
     ├── export-requirements.sh   regenerates docs/requirements.md
-    └── run-as-owner.sh          starts the project image's commands and API as the owner of models/
+    └── run-as-owner.sh          starts the project image's commands, API and data service as the owner of models/
 ```
 
 ## Setup

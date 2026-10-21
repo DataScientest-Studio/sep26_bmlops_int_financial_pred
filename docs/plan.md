@@ -218,7 +218,7 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
 - [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001)
   - [ ] Airflow 3.3.2 in Compose, LocalExecutor, with its own database `airflow` on the project's PostgreSQL server, created when missing; its page on `127.0.0.1:${AIRFLOW_PORT}`, with a login for one admin user, whose password is set in `.env`
   - [ ] each task calls a service built from the project image over the Compose network, so Airflow's own image holds none of the project's packages and needs no access to Docker; Airflow receives only the settings its pipelines read, never the EODHD key
-  - [ ] data service: `POST /load` runs the load and answers with its report, `POST /replay` copies the next day and answers with it (none when nothing is left); reachable only inside Compose
+  - [x] data service: `POST /load` runs the load and answers with its report, `POST /replay` copies the next day and answers with it (none when nothing is left); reachable only inside Compose
   - [ ] daily update pipeline: one load on weekdays at 16:00 New York time plus `FINAL_DELAY_MINUTES`; never retried, since one load uses the free tier's day
   - [ ] replay pipeline: one replayed day every 60 / `REPLAY_DAYS_PER_MINUTE` seconds
   - [ ] both pipelines start paused, the operator unpauses one of them; neither catches up on missed runs, and each runs once at a time

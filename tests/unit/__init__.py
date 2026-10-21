@@ -1,1 +1,1 @@
-"""Tests of single functions and the API wiring."""
+"""Tests of single functions and the wiring of the API and the data service."""

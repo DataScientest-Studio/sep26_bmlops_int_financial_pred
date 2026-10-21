@@ -6,8 +6,8 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 
 | Package | What it does | Used for |
 |---|---|---|
-| fastapi | Web framework for HTTP APIs: turns Python functions into endpoints, checks request and response bodies, and generates the interactive documentation at `/docs`. | The API (`forecasting.api`): `/health`, `/training`, `/predict`. |
-| uvicorn | Web server that runs a FastAPI application and listens on a port. | The `api` service (`make api`). |
+| fastapi | Web framework for HTTP APIs: turns Python functions into endpoints, checks request and response bodies, and generates the interactive documentation at `/docs`. | The API (`forecasting.api`): `/health`, `/training`, `/predict`; the data service (`forecasting.data_service`): `/health`, `/load`, `/replay`. |
+| uvicorn | Web server that runs a FastAPI application and listens on a port. | The `api` service (`make api`) and the `data` service. |
 | pandas | Tables in memory (DataFrame): reading query results, computing changes and rolling values over days. | Prices, features, target, evaluation. |
 | scikit-learn | Machine-learning library: regression models, metrics, preprocessing. | The model (Ridge, see `decisions/regressors.md`) and its error metrics. |
 | sqlalchemy | Database toolkit: one way to connect to and query SQL databases, independent of the database product; pandas reads and writes tables through it. | Connection to PostgreSQL (`forecasting.db`), reading and writing prices. |
