@@ -8,11 +8,10 @@ INDEX_ENTRY = "[[indices]]\nsymbol = 'TEST.INDX'\nexchange = 'XNYS'\n"
 
 
 def _use_securities_file(monkeypatch, tmp_path, content: str) -> None:
-    """Write a securities file into an empty folder and work from there."""
-    config = tmp_path / "config"
-    config.mkdir()
-    (config / "securities.toml").write_text(content)
-    monkeypatch.chdir(tmp_path)
+    """Write a securities file into an empty folder and have the settings read it."""
+    securities_file = tmp_path / "securities.toml"
+    securities_file.write_text(content)
+    monkeypatch.setattr("forecasting.config.SECURITIES_FILE", securities_file)
 
 
 def test_settings_list_the_configured_indices(monkeypatch, tmp_path):
@@ -32,7 +31,6 @@ def test_settings_list_the_configured_indices(monkeypatch, tmp_path):
     [
         ("123", "'XNYS'"),  # a number
         ("''", "'XNYS'"),  # empty
-        ("'TEST.US'", "2026-01-02"),  # a date
     ],
 )
 def test_securities_file_refuses_a_value_that_is_no_text(

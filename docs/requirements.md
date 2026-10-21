@@ -35,6 +35,13 @@ Each requirement names how it is checked (VERIFICATION):
 
 Design choices and the schedule are not requirements; they are recorded in the plan and the decision documents.
 
+## What the product supports
+
+- One local machine per team member, running the whole system with Docker Compose; no cloud service and no machine shared between members.
+- Python 3.12, with the environment managed by uv.
+- Market data from EODHD with the member's own key; the reference securities (six stocks, two market indices) fit the free tier's 20 calls per day with one load or update per day.
+- Every service listens on the local machine only (127.0.0.1).
+
 ## Data
 
 ### Historical load
@@ -62,7 +69,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, at a speed set by the operator.
+**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at a speed in trading days per minute set by the operator. The history it replays from stays unchanged.
 
 **Rationale**: Shows the complete loop of ingestion, drift check, retraining and promotion within minutes instead of weeks.
 
@@ -149,7 +156,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: A newly trained model becomes the production model only if it scores better than the current production model on the same evaluation window; otherwise the current production model stays in place.
+**Statement**: A newly trained model becomes the production model only if its mean absolute error on the configured evaluation window is lower than that of the current production model on the same days; otherwise, a tie included, the current production model stays in place. The first model trained for a security becomes its production model.
 
 ## Service
 
@@ -226,6 +233,24 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **VERIFICATION**: Inspection
 
 **Statement**: Every push runs linting and unit tests and builds the service images; a push to the main branch also publishes the images.
+
+### Commands from any folder
+
+**UID**: REQ-AUT-005 \
+**Status**: Draft \
+**Tags**: phase-2 \
+**VERIFICATION**: Test
+
+**Statement**: Each command of the system works the same whatever folder it is started from.
+
+### One packaged environment
+
+**UID**: REQ-AUT-006 \
+**Status**: Draft \
+**Tags**: phase-2 \
+**VERIFICATION**: Inspection
+
+**Statement**: The system's commands, and its services built from its own code, run in one packaged environment with the pinned package versions.
 
 ## Monitoring
 
@@ -321,4 +346,4 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: course \
 **VERIFICATION**: Inspection
 
-**Statement**: The system keeps all the data it uses in its database; files fetched from a data source are only read into the database, never used as storage.
+**Statement**: The system keeps all the data it uses in its database; files fetched from a data source are only read into the database, never used as storage. DVC snapshots are version records of training datasets, never a store that data is read from.

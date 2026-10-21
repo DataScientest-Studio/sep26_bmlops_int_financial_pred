@@ -10,7 +10,11 @@ from sqlalchemy import URL
 
 from forecasting.trading_calendar import CALENDAR_START
 
-SECURITIES_FILE = Path("config/securities.toml")
+# The project is installed editable, so Python runs this file from the project folder,
+# as src/forecasting/config.py; paths found from it do not depend on the folder a
+# command starts in.
+PROJECT_DIR = Path(__file__).resolve().parents[2]
+SECURITIES_FILE = PROJECT_DIR / "config" / "securities.toml"
 
 
 @dataclass(frozen=True)
@@ -48,6 +52,9 @@ class Settings:
         final_delay: Time after an exchange's close from which a fetched price is final.
         history_start: First day of price history loaded for a security with none
             stored.
+        replay_database_url: SQLAlchemy URL of the database replay copies into, named
+            after the project database with `_replay`.
+        replay_start: Simulated today of the first replay run.
     """
 
     database_url: str = field(repr=False)
@@ -56,17 +63,21 @@ class Settings:
     indices: tuple[Security, ...]
     final_delay: timedelta
     history_start: date
+    replay_database_url: str = field(repr=False)
+    replay_start: date
 
 
 def load_settings() -> Settings:
     """Read the settings from the environment and the securities file.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES and HISTORY_START. A missing variable
-    raises KeyError.
+    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES, HISTORY_START and REPLAY_START. A
+    missing variable raises KeyError.
 
     @relation(REQ-DAT-001, scope=function)
+    @relation(REQ-DAT-003, scope=function)
     @relation(REQ-DAT-007, scope=function)
+    @relation(REQ-AUT-005, scope=function)
 
     Returns:
         The settings of this deployment.
@@ -77,14 +88,19 @@ def load_settings() -> Settings:
     """
     env = os.environ
     # URL.create escapes characters with a meaning in URLs, such as @ in a password.
-    database_url = URL.create(
+    server = URL.create(
         "postgresql+psycopg",
         username=env["POSTGRES_USER"],
         password=env["POSTGRES_PASSWORD"],
         host=env["POSTGRES_HOST"],
         port=int(env["POSTGRES_PORT"]),
-        database=env["POSTGRES_DB"],
-    ).render_as_string(hide_password=False)
+    )
+    database = env["POSTGRES_DB"]
+    database_url = server.set(database=database)
+    # Named after the project database, never set by hand, so replay and replay-reset
+    # can never write to or drop the project database. PostgreSQL keeps only the first
+    # 63 bytes of a database name: this holds while POSTGRES_DB has at most 56 bytes.
+    replay_database_url = server.set(database=f"{database}_replay")
     with SECURITIES_FILE.open("rb") as file:
         listed = tomllib.load(file)
     securities = tuple(Security(**e) for e in listed["securities"])
@@ -95,10 +111,12 @@ def load_settings() -> Settings:
         raise ValueError(f"HISTORY_START must be {CALENDAR_START} or later")
 
     return Settings(
-        database_url=database_url,
+        database_url=database_url.render_as_string(hide_password=False),
         model_dir=Path(env["MODEL_DIR"]),
         securities=securities,
         indices=indices,
         final_delay=final_delay,
         history_start=history_start,
+        replay_database_url=replay_database_url.render_as_string(hide_password=False),
+        replay_start=date.fromisoformat(env["REPLAY_START"]),
     )

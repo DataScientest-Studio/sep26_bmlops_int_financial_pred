@@ -7,7 +7,7 @@ Forecasts the next trading day's price change of a security and offers the forec
 Group project of the DataScientest MLOps bootcamp (sep26 cohort).
 
 ## Status
-Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`); training, forecasts and the app are not built yet.
+Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`), and so does replaying stored history day by day (`make replay`); training, forecasts and the app are not built yet.
 
 ## Project structure
 ```
@@ -18,8 +18,10 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── pyproject.toml               project metadata and packages
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
-├── compose.yaml                 services run in Docker: the PostgreSQL database
-├── .env.example                 template for the local .env (database login, model folder, first day of history, EODHD key)
+├── Dockerfile                   project image: the code with its locked packages, for the commands and the API
+├── .dockerignore                what the project image is built from
+├── compose.yaml                 services run in Docker: the PostgreSQL database, the API, and the project commands on demand
+├── .env.example                 template for the local .env (database login, model folder, first day of history, replay start, EODHD key)
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
@@ -49,13 +51,15 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── course-checklist.md      what to build, per phase
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
+├── models/                      trained models, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
-│   ├── commands.py              commands the Makefile runs (load)
+│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset)
 │   ├── config.py                settings from .env and config/
-│   ├── db.py                    database connection, reading prices
+│   ├── db.py                    database connection, reading prices, creating and dropping databases
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
 │   ├── eodhd.py                 the EODHD data source
+│   ├── replay.py                replay of stored history into a database of its own
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
@@ -69,7 +73,8 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── conftest.py              shared fixtures: a test database per worker, API client
 │   └── fakes.py                 stand-in data source with generated prices
 └── tools/
-    └── export-requirements.sh   regenerates docs/requirements.md
+    ├── export-requirements.sh   regenerates docs/requirements.md
+    └── run-as-owner.sh          starts the project image's commands and API as the owner of models/
 ```
 
 ## Setup
@@ -79,14 +84,18 @@ Needs [uv](https://docs.astral.sh/uv/), `make` and Docker with Compose. From a f
 cp .env.example .env      # then add your own EODHD key (see "EODHD key" below); keep the development login
 make setup                # Python environment in .venv/
 make db                   # starts PostgreSQL, waits until it is ready
-make load                 # loads the price history from EODHD into the database
+make load                 # builds the project image, loads the price history from EODHD
 ```
 
 After that, `make update` once a day adds the new trading days.
 
-`make setup` installs the Python version from `.python-version` if missing and creates `.venv/` with the packages pinned in `uv.lock`.
+`.env` needs every setting of `.env.example`; a missing one is named in the error of the first command or API request that reads the settings.
+
+`make setup` installs the Python version from `.python-version` if missing and creates `.venv/` with the packages pinned in `uv.lock`; tests and checks run from it.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
+
+`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -94,11 +103,14 @@ After that, `make update` once a day adds the new trading days.
 | `make db-stop` | stop it; the data is kept |
 | `make db-shell` | SQL prompt in the database |
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
+| `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
+| `make replay-reset` | delete the replay database; the next `make replay` starts over from `REPLAY_START` |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |
 | `make contract` | checks how EODHD delivers data, with your own key from `.env`; a check your key's history, remaining calls or plan cannot support is skipped with its reason |
-| `make api` | API on http://localhost:8000, documentation at `/docs` |
+| `make api` | start the API on http://localhost:8000, documentation at `/docs`; returns once it answers |
+| `make api-stop` | stop the API |
 
 `make db-shell` opens an SQL prompt (`\q` leaves it). For example, the latest day stored per security:
 
@@ -121,6 +133,9 @@ DELETE FROM prices WHERE symbol LIKE '%.SAMPLE';
 ```
 
 `LIKE '%.SAMPLE'` matches every symbol that ends in `.SAMPLE` (`%` stands for any text), so real prices are never deleted.
+
+### Replay
+Replay plays stored history back one trading day at a time, as if each day were arriving live, so the pipeline can be shown over weeks of data within minutes. It copies prices, splits and dividends from the database into a database of its own on the same server, named after it with `_replay` (`forecasting_replay` for `forecasting`), and only reads the database it copies from; it makes no EODHD calls. The first `make replay` creates the replay database and fills it with every stored day up to `REPLAY_START`, which must lie between the first and the latest stored day. Each later run copies the replay database's latest day again, so a price that has become final since replaces the provisional one, and then the next stored day. Each run copies all or nothing. Once the latest stored day is copied, nothing is left to replay. `make replay-reset` deletes the replay database to start over.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses their own key:

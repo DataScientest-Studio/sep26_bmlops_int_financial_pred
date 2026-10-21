@@ -10,19 +10,15 @@ from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 
-import psycopg
 import pytest
 from fastapi.testclient import TestClient
-from psycopg import sql
 from sqlalchemy import Engine, make_url, text
 
 from forecasting.api.app import create_app
 from forecasting.api.dependencies import get_engine, get_settings
 from forecasting.config import Settings, load_settings
-from forecasting.db import connect
+from forecasting.db import connect, create_database, drop_database
 from tests.fakes import INDICES, SECURITIES
-
-INIT_DIR = Path(__file__).parent.parent / "db" / "init"
 
 
 @pytest.fixture(scope="session")
@@ -34,30 +30,23 @@ def example_settings() -> Settings:
 @pytest.fixture(scope="session")
 def database_url(example_settings: Settings, worker_id: str) -> Iterator[str]:
     """Create an empty project database for this worker; drop it afterwards."""
-    # SQLAlchemy names its driver in the URL (postgresql+psycopg://); psycopg itself
-    # takes only the plain postgresql:// form.
-    sqlalchemy_url = make_url(example_settings.database_url)
-    name = f"{sqlalchemy_url.database}_test_{worker_id}"
-    psycopg_url = sqlalchemy_url.set(drivername="postgresql")
-    admin_url = psycopg_url.render_as_string(hide_password=False)
-    url = sqlalchemy_url.set(database=name).render_as_string(hide_password=False)
-    with psycopg.connect(admin_url, autocommit=True) as admin:
-        admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {}").format(sql.Identifier(name))
-        )
-        admin.execute(sql.SQL("CREATE DATABASE {}").format(sql.Identifier(name)))
-    engine = connect(url).execution_options(isolation_level="AUTOCOMMIT")
-    with engine.connect() as connection:
-        for script in sorted(INIT_DIR.glob("*.sql")):
-            connection.exec_driver_sql(script.read_text())
-    engine.dispose()
-    yield url
-    with psycopg.connect(admin_url, autocommit=True) as admin:
-        admin.execute(
-            sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)").format(
-                sql.Identifier(name)
-            )
-        )
+    url = make_url(example_settings.database_url)
+    name = f"{url.database}_test_{worker_id}"
+    test_url = url.set(database=name).render_as_string(hide_password=False)
+    create_database(test_url)
+    yield test_url
+    drop_database(test_url)
+
+
+@pytest.fixture
+def replay_url(example_settings: Settings, worker_id: str) -> Iterator[str]:
+    """URL of this worker's replay database, which does not exist yet; dropped after."""
+    url = make_url(example_settings.replay_database_url)
+    name = f"{url.database}_test_{worker_id}"
+    test_url = url.set(database=name).render_as_string(hide_password=False)
+    drop_database(test_url)
+    yield test_url
+    drop_database(test_url)
 
 
 @pytest.fixture

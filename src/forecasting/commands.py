@@ -4,9 +4,10 @@ import argparse
 import os
 
 from forecasting.config import load_settings
-from forecasting.db import connect
+from forecasting.db import connect, drop_database
 from forecasting.eodhd import EodhdSource
 from forecasting.load import load_history
+from forecasting.replay import replay_next_day
 
 
 def load() -> None:
@@ -34,7 +35,35 @@ def load() -> None:
     print(f"Missing: {report.missing} trading days without a quote.")
 
 
-COMMANDS = {"load": load}
+def replay() -> None:
+    """Copy the next stored day into the replay database and print it.
+
+    The first run fills the replay database up to `REPLAY_START`. Prints the day
+    replayed, or that nothing is left to replay.
+
+    @relation(REQ-DAT-003, scope=function)
+    """
+    settings = load_settings()
+    day = replay_next_day(
+        connect(settings.database_url),
+        settings.replay_database_url,
+        settings.replay_start,
+    )
+    if day is None:
+        print("Nothing left to replay: the latest stored day is already replayed.")
+    else:
+        print(f"Replayed {day}.")
+
+
+def replay_reset() -> None:
+    """Drop the replay database, so the next replay starts over from `REPLAY_START`.
+
+    @relation(REQ-DAT-003, scope=function)
+    """
+    drop_database(load_settings().replay_database_url)
+
+
+COMMANDS = {"load": load, "replay": replay, "replay-reset": replay_reset}
 
 
 def main() -> None:

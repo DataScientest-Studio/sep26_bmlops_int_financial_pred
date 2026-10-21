@@ -1,14 +1,18 @@
 # Course material from DataScientest; condensed in references/
 course-material/
 
+# Team notes and guides kept on this machine only
+internal/
+
 # Python environment created by uv
 .venv/
 
 # Local settings and passwords
 .env
 
-# Trained models
-models/
+# Trained models; the empty folder is kept, so Docker never has to create it (as root)
+models/*
+!models/.gitkeep
 
 # Python cache
 __pycache__/

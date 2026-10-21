@@ -1,0 +1,11 @@
+# The image gets only what it is built from; everything else, .env included, stays out.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!README.md
+!src/
+!config/
+!db/init/
+!tools/run-as-owner.sh
+**/__pycache__/
