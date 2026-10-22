@@ -24,13 +24,16 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Objectives and key metrics | as drafted in `docs/requirements.sdoc` | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "Objectives", "Key metrics" |
 | Local operation | each member runs the whole system on their own machine; no cloud service | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "What the product supports" |
 | Replay | replays into a database of its own, one trading day per interval in seconds (a setting) | Decided (Tobias) | Oct 22, 2026 5) | REQ-DAT-003 |
-| Dataset versions | a DVC snapshot is a version record of a training dataset, never the store training reads from; DVC runs without Git and keeps every snapshot on the member's own machine only, with no remote | Decided (Tobias) | Oct 19, 2026 3), Oct 22, 2026 5) | REQ-CON-003, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) item 5 |
+| Dataset versions | a DVC snapshot is a version record of a training dataset, never the store training reads from; DVC runs without Git and keeps every snapshot on the member's own machine, in DVC's own store and in the local object store | Decided (Tobias); DVC optional (coach), kept: Decided (Tobias) | Oct 19, 2026 3), Oct 22, 2026 5), Oct 22, 2026 6) | REQ-CON-003, [Object store](#object-store), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) item 5 |
 | Airflow | Airflow 3.3.2 with the LocalExecutor, its own database on the project's PostgreSQL server; each task calls a service built from the project image: training through the API, loads and replay through a data service reachable only inside Compose | Decided (Tobias) | Oct 21, 2026 4) | [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) |
 | Code review | work from a member's own branch reaches `main` through a pull request; an approval is not required yet | Decided (Tobias) | Oct 21, 2026 4) | [Continuous integration](#continuous-integration) |
 | Provisional closes | a price fetched while its session runs stands in for the close until a later fetch replaces it; it is final once fetched a set delay after its exchange's close | Built | Oct 22, 2026 5) | [Provisional closes](#provisional-closes), REQ-DAT-007 |
 | Scope | level 1 complete (full chain, persistence and mean-change baselines, historical replay, trading calendar) with several securities, plus the level 3 parts the course requires (prediction logging, drift checks, triggered retraining, keep-the-better-model rule); level 2 items (more securities, backtesting) only if the chain is complete by Nov 6 | Decided (Tobias) | Oct 22, 2026 5) | [Roadmap](#roadmap) |
 | History to train on | training uses every stored final day of a security; how far back that reaches depends on each member's key and database, so it may differ from machine to machine | Decided (Tobias) | Oct 22, 2026 5) | [Data source](#data-source) |
 | Code files | separate modules for features, training, evaluation and prediction in `src/forecasting/` | Built | Oct 22, 2026 5) | — |
+| Model store | MLflow's model registry keeps the models; the MLflow server keeps its records in a database of its own on the project's PostgreSQL server and the model files in a local S3-compatible object store, SeaweedFS | Coach feedback (registry, PostgreSQL, separate object store); Decided (Tobias) (SeaweedFS) | Oct 22, 2026 6) | [Object store](#object-store), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) item 3 |
+| Monitoring | Evidently for drift; Prometheus and Grafana for the metrics and the dashboard, API usage included | Coach feedback | Oct 22, 2026 6) | REQ-MON-001–004 |
+| Versioning | every training run records the model, the version of the dataset it trained on and the commit of the code it ran, or `unknown` for an image `make` did not build | Coach feedback | Oct 22, 2026 6) | REQ-MOD-004, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) items 3 and 5 |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST).
 
@@ -41,6 +44,8 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 4\) Decided by Tobias as coordinator, Oct 21, 2026.
 
 5\) Decided by Tobias as coordinator, Oct 22, 2026.
+
+6\) Coach meeting, Oct 22, 2026; the choices the coach left to us decided by Tobias as coordinator, Oct 22, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's machine and is never committed.
@@ -75,6 +80,9 @@ During a running session the latest price stands in for the close. Each stored r
 
 ### Close prices
 the database stores prices as they printed — open, high, low, close and volume as traded that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as events in tables of their own; the model's inputs correct prices and volumes for them when the inputs are built. EODHD delivers volume already corrected for each split it has applied; a split it lists for a day after the last delivered day is not yet applied. The load reverses the correction with the split ratios it fetches in the same run (each day's volume divided by the ratios of all later splits up to the last delivered day). When on a split's own day EODHD applies it (before the session opens, during it, or only after the close) is unchecked; it is checked when a reference security next splits. EODHD keeps closes as printed and multiplies the volume before a split by its ratio; the splits API delivers each ratio as text, for example `4.000000/1.000000`.
+
+### Object store
+Model files and dataset versions are kept in an S3-compatible object store that runs in Compose on the member's own machine, so price data never leaves it. The coach recommended MinIO; its community edition is no longer maintained and no longer published as an image, so we use SeaweedFS (Apache 2.0 licence, maintained since 2014, the default object store of Kubeflow Pipelines), which offers the same S3 interface. Training and the API send and fetch model files through the MLflow server; DVC copies each dataset version into a bucket of its own.
 
 ### Reference securities
 Six stocks that behave differently, plus two market indices as reference series (`config/securities.toml`). The indices are loaded like the stocks but are never a forecast target; whether the model uses their recent changes as inputs is part of "First model". Each request covers one symbol and one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs three calls per stock (prices, splits, dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily limit. A daily update costs the same when events are checked every day, 8 when only prices are fetched; a fetch during a running session does not fit beside a full daily update on the free tier.
@@ -123,11 +131,14 @@ Live demo: replay advances the simulated calendar by a few trading days and the 
 |---|---|---|
 | until Mon Oct 12 (coach meeting 12:00) | Foundations: a clone plus `make` gives a database with history, a trained baseline and an API answering `predict/` | "Phase 1 plan" below; roadmap and team setup agreed |
 | Oct 13–22 (coach meeting) | Phase 1 finished and the first phase 2 piece | open items of the "Phase 1 plan"; the agreed "Phase 2 plan" |
-| Oct 23–29 | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes in MLflow; items in "Phase 2 plan" |
-| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with alerts and the retraining webhook, first demo app version |
+| Oct 23–29 | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, object store, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes and the code's commit in MLflow; items in "Phase 2 plan" |
+| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with API usage, alerts and the retraining webhook, first demo app version |
 | Nov 7–11 | Feature freeze Nov 11 | tests, README and API docs, check from a fresh clone, demo script |
 | Thu Nov 12 | Mock defense call | full demo as at the defense |
-| Nov 13–16 | Polish and rehearse | fixes from the mock defense, presentation (slides or in the demo app), 1–2 rehearsals with equal speaking time |
+| Nov 13–15 | Polish | fixes from the mock defense, presentation (slides or in the demo app) |
+| Mon Nov 16 | Coach meeting: phase 3 check | full demo; the coach's findings become the fix list |
+| Nov 17–22 | Fix and rehearse | fixes from the coach meeting, 1–2 rehearsals with equal speaking time |
+| about Mon Nov 23 | Defense | one week after the coach meeting; the exact day is set by the coach |
 
 Level 2 items (more securities, backtesting) start only if the chain is complete by Nov 6.
 
@@ -197,10 +208,12 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [x] one image holds the project's code and its locked packages; the commands run from it
   - [x] Compose runs the API from it next to the database; the commands and the API share the project's `models/` folder
   - [x] paths (securities file, `db/init`) do not depend on the folder a command starts in
-- [ ] **3 MLflow tracking** (1, 2; REQ-MOD-004)
-  - [ ] MLflow in Compose, with its own database
-  - [ ] every training run records its parameters, metrics, dataset version and model
-  - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed
+- [ ] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
+  - [ ] the object store, SeaweedFS, in Compose: an exact image version, its data in a volume, no published port
+  - [ ] the MLflow server in Compose: its records in the database `mlflow` on the project's PostgreSQL server, its model files in the object store, its page on `127.0.0.1:${MLFLOW_PORT}`; the API and the commands reach it inside Compose
+  - [ ] the project image carries the commit it was built from: `make` passes it in when it builds the image, a build from a tree with uncommitted changes says so, and a build `make` did not start records the code version as `unknown`
+  - [ ] every training run records its parameters, metrics, dataset version, code version and model (1)
+  - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed (1)
 - [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
   - [ ] one registered model per security
   - [ ] a new model becomes production only if it is better by the rule chosen in "Better model" (Decision proposals); the first model always becomes production
@@ -208,7 +221,8 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
 - [ ] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
   - [x] `dataset_version` writes the rows it is given, without row numbers, to `datasets/<symbol>.csv`, records the file with DVC without Git and returns DVC's fingerprint of it as the version id; the same rows always get the same id, in the member's own database and in the replay database alike
   - [ ] before training a security, training passes the rows it trains on to `dataset_version`
-  - [x] each distinct dataset is kept as a full copy in DVC's store on the member's own machine, so a dataset can be brought back by its id; no remote (price data never leaves a member's machine), and older copies are never deleted, since without Git DVC's clean-up would remove them; the snapshot is a record, training reads from the database
+  - [x] each distinct dataset is kept as a full copy in DVC's store on the member's own machine, so a dataset can be brought back by its id; no remote outside the member's own machine (price data never leaves it), and older copies are never deleted, since without Git DVC's clean-up would remove them; the snapshot is a record, training reads from the database
+  - [ ] DVC copies each dataset version into the object store (item 3)
   - [ ] MLflow records it with the run
 - [x] **6 Replay** (7 for the interval; REQ-DAT-003)
   - [x] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
@@ -233,8 +247,9 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
 - Registered model names: one per security, for example `forecast-AAPL.US`.
 - Assets: `prices` (after each load of the member's own database), `replay-prices` (after each replayed day in the replay database).
 - Functions: `dataset_version(settings, symbol, rows) -> version id`, called by training with the rows it trains on, before it trains; MLflow records the id with the run.
-- Settings: MLflow address, evaluation window (its default is chosen with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
+- Settings: MLflow address, MLflow page port (`MLFLOW_PORT`), evaluation window (its default is chosen with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
+- Code version: the commit the project image was built from; `unknown` when `make` did not build it.
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings, communication, work tracking, reviews), to be agreed by the team.
-- Defense date: the coach says Nov 17 or 18, the SEP26 sheet says Monday or Tuesday (Nov 16 or 17); the sheet also lists a mock defense call on Nov 12. (Ask the coach.)
+- Defense date: one week after the coach meeting of Nov 16, around Mon Nov 23 (coach, Oct 22); the SEP26 sheet also lists a mock defense call on Nov 12. The exact day: (Ask the coach.)
