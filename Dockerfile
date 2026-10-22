@@ -1,4 +1,5 @@
-# Project image of the commands and the API: the code with the locked runtime packages.
+# Project image of the commands, the API, the data service and the MLflow server: the
+# code with the locked runtime packages.
 FROM python:3.12.14-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /bin/uv
 
@@ -17,6 +18,11 @@ COPY config/ config/
 COPY db/init/ db/init/
 RUN uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Passed in by `make` when it builds the image; defaults to "unknown" when built
+# directly without `make`.
+ARG CODE_VERSION=unknown
+ENV CODE_VERSION=${CODE_VERSION}
 
 COPY tools/run-as-owner.sh /usr/local/bin/run-as-owner
 ENTRYPOINT ["run-as-owner"]

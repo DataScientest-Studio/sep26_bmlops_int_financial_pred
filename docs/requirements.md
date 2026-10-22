@@ -39,8 +39,14 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 - One local machine per team member, running the whole system with Docker Compose; no cloud service and no machine shared between members.
 - Python 3.12, with the environment managed by uv.
+- Docker Engine 28.0 or later (Docker Desktop includes it).
 - Market data from EODHD with the member's own key; the reference securities (six stocks, two market indices) fit the free tier's 20 calls per day with one load or update per day.
 - Every service listens on the local machine only (127.0.0.1).
+- The scheduled pipeline runs either the daily update or replay, one at a time.
+- At most one load or replay runs at a time, scheduled or manual; a manual one runs only while the scheduled pipeline is paused.
+- At most one training runs at a time, scheduled or manual; a manual one runs only while the scheduled pipeline is paused.
+- A missed scheduled run is not repeated; the next daily update fetches from the latest stored day.
+- Not guarded against: anyone or anything on the member's own machine — another account, program or web page; every service is published on 127.0.0.1 only, or not at all.
 
 ## Data
 
@@ -69,7 +75,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at a speed in trading days per minute set by the operator. The history it replays from stays unchanged.
+**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged.
 
 **Rationale**: Shows the complete loop of ingestion, drift check, retraining and promotion within minutes instead of weeks.
 
@@ -147,7 +153,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: Every training run records its parameters, metrics, dataset version and resulting model.
+**Statement**: Every training run records its parameters, metrics, dataset version, code version and resulting model.
 
 ### Model promotion
 
@@ -156,7 +162,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: A newly trained model becomes the production model only if its mean absolute error on the configured evaluation window is lower than that of the current production model on the same days; otherwise, a tie included, the current production model stays in place. The first model trained for a security becomes its production model.
+**Statement**: A newly trained model becomes the production model only if it is better than the current production model by the agreed rule; otherwise the current production model stays in place. The first model trained for a security becomes its production model.
 
 ## Service
 
@@ -205,7 +211,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Demonstration
 
-**Statement**: On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps.
+**Statement**: On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps. A failed run shows its reason on the pipeline's page.
 
 ### Outcome collection
 

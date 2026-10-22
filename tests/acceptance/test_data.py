@@ -1,13 +1,15 @@
 """Acceptance tests of the data requirements (black box)."""
 
+from collections.abc import Iterator
 from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
 import pytest
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 
-from forecasting.db import connect
+from forecasting.datasets import dataset_version
+from forecasting.db import connect, drop_database, read_prices
 from forecasting.load import load_history
 from forecasting.replay import replay_next_day
 from forecasting.trading_calendar import session_close, trading_days
@@ -33,6 +35,37 @@ def _stored_rows(engine, symbol: str) -> pd.DataFrame:
 def _last_row(engine, symbol: str) -> pd.Series:
     """Read the stored quote of the latest day of one symbol."""
     return _stored_rows(engine, symbol).iloc[-1]
+
+
+@pytest.fixture
+def spaced_password_replay_url(engine, replay_url, worker_id) -> Iterator[str]:
+    """Replay URL on a login of its own whose password holds a space; dropped after."""
+    role = f"replay_login_{worker_id}"
+    password = "two words"
+    with engine.begin() as connection:
+        connection.execute(text(f'DROP ROLE IF EXISTS "{role}"'))
+        create = f"CREATE ROLE \"{role}\" LOGIN CREATEDB PASSWORD '{password}'"
+        connection.execute(text(create))
+    url = make_url(replay_url).set(username=role, password=password)
+    spaced_url = url.render_as_string(hide_password=False)
+    yield spaced_url
+    drop_database(spaced_url)
+    with engine.begin() as connection:
+        connection.execute(text(f'DROP ROLE "{role}"'))
+
+
+def _training_rows(engine, settings) -> pd.DataFrame:
+    """Load the standard history; read one security's prices as training does."""
+    load_history(
+        engine,
+        standard_source(),
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
+
+    return read_prices(engine, SECURITIES[0].symbol)
 
 
 def test_load_stores_the_history_of_each_security_and_index(engine, settings):
@@ -413,7 +446,41 @@ def test_replay_at_the_latest_stored_day_has_nothing_left(engine, settings, repl
     assert replay_next_day(engine, replay_url, latest) is None
 
 
+def test_replay_works_with_a_password_holding_a_space(
+    engine, settings, spaced_password_replay_url
+):
+    """REQ-DAT-003: replay copies into a database of its own on any valid login."""
+    start = min(load_history_around_start(engine, settings))
+    assert replay_next_day(engine, spaced_password_replay_url, start) == start
+
+
 def test_replay_with_nothing_stored_is_refused(engine, settings, replay_url):
     """REQ-DAT-003: with no stored history, there is nothing to replay."""
     with pytest.raises(ValueError):
         replay_next_day(engine, replay_url, settings.replay_start)
+
+
+def test_same_training_rows_get_the_same_version(engine, settings):
+    """REQ-DAT-006: the same training rows always get the same version identifier."""
+    rows = _training_rows(engine, settings)
+    symbol = SECURITIES[0].symbol
+    first = dataset_version(settings, symbol, rows)
+    read_again = read_prices(engine, symbol)
+    assert dataset_version(settings, symbol, read_again) == first
+
+
+def test_changed_training_rows_get_a_new_version(engine, settings):
+    """REQ-DAT-006: changed training rows get a new version identifier."""
+    rows = _training_rows(engine, settings)
+    symbol = SECURITIES[0].symbol
+    first = dataset_version(settings, symbol, rows)
+    # Changes one close in the middle of the history by one cent, so the rows differ
+    # from the first version only in that price: the same days and number of rows. //
+    # divides without remainder, so 7 rows give row 3. copy() leaves the rows of the
+    # first version unchanged. loc[row, column] writes one cell; read_prices numbers
+    # its rows 0, 1, 2 …, so row 3 is the fourth row. iloc[row] reads a value by
+    # position, and float() makes the number a plain Python float the addition accepts.
+    middle = len(rows) // 2
+    changed = rows.copy()
+    changed.loc[middle, "close"] = float(rows["close"].iloc[middle]) + 0.01
+    assert dataset_version(settings, symbol, changed) != first

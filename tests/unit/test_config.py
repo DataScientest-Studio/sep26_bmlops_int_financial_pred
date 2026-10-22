@@ -79,3 +79,15 @@ def test_no_evaluation_days_is_refused(monkeypatch, tmp_path):
     monkeypatch.setenv("EVALUATION_DAYS", "0")
     with pytest.raises(ValueError):
         load_settings()
+
+
+def test_code_version_defaults_to_unknown(monkeypatch):
+    """Without CODE_VERSION in the environment, the code version is unknown."""
+    monkeypatch.delenv("CODE_VERSION", raising=False)
+    assert load_settings().code_version == "unknown"
+
+
+def test_code_version_reads_the_environment(monkeypatch):
+    """When CODE_VERSION is set, the settings report that commit."""
+    monkeypatch.setenv("CODE_VERSION", "b64fa1e")
+    assert load_settings().code_version == "b64fa1e"

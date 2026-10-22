@@ -12,9 +12,9 @@ Each member owns one area from phase 1 to the defense and presents it at the def
 
 | Area | Owner | Phase 1 | Phase 2 | Phase 3 |
 |---|---|---|---|---|
-| Data | [team member A, B, or C] | database, one-time load | daily ingestion, replay, trading calendar, DVC, ingestion DAG | prediction log tables, outcome collection |
-| Model | [team member A, B, or C] | training and prediction functions, baselines | MLflow tracking and registry, promotion rule, training DAG | Evidently drift DAGs, triggered retraining |
-| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, API access (users and roles) | Prometheus and Grafana, alerts, demo app |
+| Data | [team member A, B, or C] | database, one-time load | daily ingestion, replay, trading calendar, DVC (copies in the object store), ingestion DAG | prediction log tables, outcome collection |
+| Model | [team member A, B, or C] | training and prediction functions, baselines | MLflow tracking of training runs and registry, promotion rule, training DAG | Evidently drift DAGs, triggered retraining |
+| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, object store, MLflow server, API access (users and roles) | Prometheus and Grafana, alerts, demo app |
 
 Shared by all: README and docs, the presentation, the interfaces between areas (agreed together, see `plan.md`).
 
@@ -47,4 +47,4 @@ Alternatives:
 - Task list in Slack or a shared document: no setup; no assignment, history or link to the code.
 
 ## Code review
-Once the foundation is built, every change goes through a pull request (`plan.md`, "Code review" in Open). The reviewer is the next member in the ring: Data → Model → Service → Data. So every member also knows a second area.
+Work from a member's own branch reaches `main` through a pull request (`plan.md`, Decisions, "Code review"); an approval is not required yet. Once it is, the reviewer is the next member in the ring: Data → Model → Service → Data. So every member also knows a second area.

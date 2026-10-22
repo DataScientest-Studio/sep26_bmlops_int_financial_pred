@@ -2,11 +2,17 @@
         db db-stop db-shell \
         load update replay replay-reset train predict \
         test acceptance contract \
-        api api-stop
+        api api-stop \
+        mlflow mlflow-stop \
+        airflow airflow-stop
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
 unexport PYTHONPATH
+
+# Commit the project image is built from, with -dirty when tracked files have
+# uncommitted changes.
+export CODE_VERSION = $(shell git rev-parse HEAD)$(if $(shell git status --porcelain --untracked-files=no),-dirty)
 
 # Creates .venv with the pinned Python and the locked packages.
 setup:
@@ -35,8 +41,9 @@ db-shell:
 	docker compose exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
 # Runs a project command in the project image, rebuilt when the code changed; starts the
-# database first if it is not running. The models folder is created first if missing.
-COMMAND_ENV = mkdir -p models && docker compose run --rm --build commands
+# database first if it is not running. The models and datasets folders are created
+# first if missing.
+COMMAND_ENV = mkdir -p models datasets && docker compose run --rm --build commands
 
 # Loads prices, splits and dividends from EODHD with the key in .env: a security without
 # stored prices from HISTORY_START on, otherwise only the days from its latest stored
@@ -85,9 +92,32 @@ contract:
 # Starts the API in the project image, rebuilt when the code changed, on
 # http://localhost:8000 (docs at /docs); returns once it answers.
 api:
-	mkdir -p models
+	mkdir -p models datasets
 	docker compose up --build --detach --wait api
 
 # Stops the API.
 api-stop:
 	docker compose stop api
+
+# Starts the MLflow server and its page with the database and the object store,
+# rebuilt when the code changed; returns once it answers on http://localhost:5000
+# (MLFLOW_PORT in .env).
+mlflow:
+	docker compose up --build --detach --wait mlflow
+
+# Stops the MLflow server and the object store; the database keeps running.
+mlflow-stop:
+	docker compose stop mlflow object-store
+
+# Airflow's services that keep running; its database and init steps run once on the way.
+AIRFLOW_SERVICES = airflow-apiserver airflow-scheduler airflow-dag-processor
+
+# Starts Airflow with the database and the data service, rebuilt when the code changed;
+# returns once its page answers on http://localhost:8080 (AIRFLOW_PORT in .env).
+airflow:
+	mkdir -p models datasets
+	docker compose up --build --detach --wait $(AIRFLOW_SERVICES)
+
+# Stops Airflow and the data service; the database keeps running.
+airflow-stop:
+	docker compose stop $(AIRFLOW_SERVICES) data
