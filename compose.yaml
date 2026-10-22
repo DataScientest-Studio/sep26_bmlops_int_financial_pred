@@ -7,11 +7,17 @@ x-project: &project
   environment:
     POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
-  # A missing models folder stops the start, so Docker never creates it as root.
+  # A missing models or datasets folder stops the start, so Docker never creates
+  # it as root.
   volumes:
     - type: bind
       source: ./models
       target: /app/models
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ./datasets
+      target: /app/datasets
       bind:
         create_host_path: false
   depends_on:

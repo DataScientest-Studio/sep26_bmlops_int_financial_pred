@@ -44,6 +44,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 - Every service listens on the local machine only (127.0.0.1).
 - The scheduled pipeline runs either the daily update or replay, one at a time.
 - At most one load or replay runs at a time, scheduled or manual; a manual one runs only while the scheduled pipeline is paused.
+- At most one training runs at a time, scheduled or manual; a manual one runs only while the scheduled pipeline is paused.
 - A missed scheduled run is not repeated; the next daily update fetches from the latest stored day.
 - Not guarded against: anyone or anything on the member's own machine — another account, program or web page; every service is published on 127.0.0.1 only, or not at all.
 

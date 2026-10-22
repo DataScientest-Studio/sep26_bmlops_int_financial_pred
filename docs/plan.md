@@ -25,7 +25,7 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Local operation | each member runs the whole system on their own machine; no cloud service | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "What the product supports" |
 | Better model | a new model is promoted only if its mean absolute error on the evaluation window (last 60 trading days) is lower than the production model's on the same days; a tie keeps the production model; a security's first model is always promoted | Decided (Tobias) | Oct 19, 2026 3) | REQ-MOD-005 |
 | Replay | replays into a database of its own, one trading day per interval in seconds (a setting) | Decided (Tobias) | Oct 22, 2026 5) | REQ-DAT-003 |
-| Dataset versions | a DVC snapshot is a version record of a training dataset, never the store training reads from | Decided (Tobias) | Oct 19, 2026 3) | REQ-CON-003 |
+| Dataset versions | a DVC snapshot is a version record of a training dataset, never the store training reads from; DVC runs without Git and keeps every snapshot on the member's own machine only, with no remote | Decided (Tobias) | Oct 19, 2026 3), Oct 22, 2026 5) | REQ-CON-003, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) item 5 |
 | Airflow | Airflow 3.3.2 with the LocalExecutor, its own database on the project's PostgreSQL server; each task calls a service built from the project image: training through the API, loads and replay through a data service reachable only inside Compose | Decided (Tobias) | Oct 21, 2026 4) | [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm (CEST).
@@ -39,7 +39,7 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 5\) Decided by Tobias as coordinator, Oct 22, 2026.
 
 ### Database
-PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's database and is never committed.
+PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's machine and is never committed.
 
 ### API access
 HTTP basic authentication against a `users` table in the project database (passwords stored as bcrypt hashes, see `decisions/password-hashing.md`; role `user` or `admin`). Users call `predict/`; admins also call `training/`, the model metrics and a few user-management endpoints (add, list, remove). The demo app logs in as a user. Builds on the course's API security exercise.
@@ -210,7 +210,9 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [ ] a new model becomes production only if its mean absolute error on the evaluation window is lower than the production model's on the same days; a tie keeps the production model; the first model always becomes production
   - [ ] `predict/` uses the production model; the training response says whether the model was promoted
 - [ ] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
-  - [ ] each training run's input data gets a version id from DVC without Git; the snapshot is a record, training reads from the database
+  - [x] `dataset_version` writes the rows it is given, without row numbers, to `datasets/<symbol>.csv`, records the file with DVC without Git and returns DVC's fingerprint of it as the version id; the same rows always get the same id, in the member's own database and in the replay database alike
+  - [ ] before training a security, training passes the rows it trains on to `dataset_version`
+  - [x] each distinct dataset is kept as a full copy in DVC's store on the member's own machine, so a dataset can be brought back by its id; no remote (price data never leaves a member's machine), and older copies are never deleted, since without Git DVC's clean-up would remove them; the snapshot is a record, training reads from the database
   - [ ] MLflow records it with the run
 - [x] **6 Replay** (7 for the interval; REQ-DAT-003)
   - [x] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
@@ -234,6 +236,7 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
 - Commands: `load` (`make load` and `make update`), `replay`, `replay-reset`, `train`, `promote` (each `python -m forecasting.commands <name>` run in the project image, and a `make` target); Airflow calls the same functions through the services: `load` and `replay` through the data service, `train` and `promote` through the API.
 - Registered model names: one per security, for example `forecast-AAPL.US`.
 - Assets: `prices` (after each load of the member's own database), `replay-prices` (after each replayed day in the replay database).
+- Functions: `dataset_version(settings, symbol, rows) -> version id`, called by training with the rows it trains on, before it trains; MLflow records the id with the run.
 - Settings: MLflow address, evaluation window (default 60 trading days), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
 
 ## Open

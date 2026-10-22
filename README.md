@@ -56,12 +56,14 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── course-checklist.md      what to build, per phase
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
+├── datasets/                    copies of the training datasets with their version records, kept by DVC (gitignored)
 ├── models/                      trained models, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices, creating and dropping databases
+│   ├── datasets.py              version ids of the training datasets, recorded with DVC
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
 │   ├── eodhd.py                 the EODHD data source
@@ -101,7 +103,7 @@ After that, `make update` once a day adds the new trading days.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
 
-`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. `docker compose logs api` shows the API's output, errors included.
+`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. Copies of the training datasets are kept the same way in `datasets/`. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -154,7 +156,12 @@ The replay pipeline (`replay`) replays one trading day every `REPLAY_INTERVAL_SE
 
 Each pipeline announces its work, so that a pipeline waiting for new prices can start on it: the daily update after each load as the asset `prices`, also after one that found no new trading day, and the replay pipeline after each replayed day as the asset `replay-prices`. The page lists both under "Assets". A skipped or failed run announces nothing.
 
-A pipeline starts paused: switch it on with its toggle on the page. Switch on only one of the two pipelines at a time, and while either is on, run none of `make load`, `make update`, `make replay` or `make replay-reset` by hand.
+A pipeline starts paused: switch it on with its toggle on the page. Switch on only one of the two pipelines at a time, and while either is on, run none of `make load`, `make update`, `make replay` or `make replay-reset` by hand. Start at most one training at a time.
+
+### Dataset versions
+A training dataset gets a version id: its rows are written to `datasets/<symbol>.csv` and recorded with [DVC](https://dvc.org) (Data Version Control), and DVC's fingerprint of the file's content is the version id. The same rows always get the same id, and any change in them gives a new one. DVC keeps a copy of every version in `datasets/.dvc/cache/`, named after its id; identical data is stored only once. Training reads from the database, never from these copies.
+
+DVC runs here without Git and without a remote: the copies stay on your machine, are never committed (`datasets/` is gitignored) and are never deleted automatically. Deleting `datasets/` loses these copies.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses their own key:

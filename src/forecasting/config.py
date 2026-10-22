@@ -15,6 +15,7 @@ from forecasting.trading_calendar import CALENDAR_START
 # command starts in.
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 SECURITIES_FILE = PROJECT_DIR / "config" / "securities.toml"
+DATASET_DIR = PROJECT_DIR / "datasets"
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class Settings:
     Attributes:
         database_url: SQLAlchemy URL of the project database.
         model_dir: Folder where trained models are saved.
+        dataset_dir: Folder where DVC keeps the copies of the training datasets.
         securities: The securities the system loads, trains and forecasts.
         indices: Market indices loaded as reference series, never forecasts.
         final_delay: Time after an exchange's close from which a fetched price is final.
@@ -59,6 +61,7 @@ class Settings:
 
     database_url: str = field(repr=False)
     model_dir: Path
+    dataset_dir: Path
     securities: tuple[Security, ...]
     indices: tuple[Security, ...]
     final_delay: timedelta
@@ -113,6 +116,7 @@ def load_settings() -> Settings:
     return Settings(
         database_url=database_url.render_as_string(hide_password=False),
         model_dir=Path(env["MODEL_DIR"]),
+        dataset_dir=DATASET_DIR,
         securities=securities,
         indices=indices,
         final_delay=final_delay,
