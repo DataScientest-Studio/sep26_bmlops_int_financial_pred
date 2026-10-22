@@ -24,7 +24,7 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 | Objectives and key metrics | as drafted in `docs/requirements.sdoc` | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "Objectives", "Key metrics" |
 | Local operation | each member runs the whole system on their own machine; no cloud service | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "What the product supports" |
 | Better model | a new model is promoted only if its mean absolute error on the evaluation window (last 60 trading days) is lower than the production model's on the same days; a tie keeps the production model; a security's first model is always promoted | Decided (Tobias) | Oct 19, 2026 3) | REQ-MOD-005 |
-| Replay | replays into a database of its own, at a speed in trading days per minute (a setting) | Decided (Tobias) | Oct 19, 2026 3) | REQ-DAT-003 |
+| Replay | replays into a database of its own, one trading day per interval in seconds (a setting) | Decided (Tobias) | Oct 22, 2026 5) | REQ-DAT-003 |
 | Dataset versions | a DVC snapshot is a version record of a training dataset, never the store training reads from | Decided (Tobias) | Oct 19, 2026 3) | REQ-CON-003 |
 | Airflow | Airflow 3.3.2 with the LocalExecutor, its own database on the project's PostgreSQL server; each task calls a service built from the project image: training through the API, loads and replay through a data service reachable only inside Compose | Decided (Tobias) | Oct 21, 2026 4) | [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) |
 
@@ -35,6 +35,8 @@ Settled. Basis: coach feedback, agreed, or built and in use. Longer explanations
 3\) Decided by Tobias as coordinator, Oct 19, 2026.
 
 4\) Decided by Tobias as coordinator, Oct 21, 2026.
+
+5\) Decided by Tobias as coordinator, Oct 22, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private database, filled only from EODHD with their own key: `make load` once, `make update` every trading day. Price data never leaves a member's database and is never committed.
@@ -210,18 +212,18 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
 - [ ] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
   - [ ] each training run's input data gets a version id from DVC without Git; the snapshot is a record, training reads from the database
   - [ ] MLflow records it with the run
-- [ ] **6 Replay** (7 for the speed; REQ-DAT-003)
+- [x] **6 Replay** (7 for the interval; REQ-DAT-003)
   - [x] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
   - [x] the first run creates the replay database and fills it up to `REPLAY_START` (between the first and the latest stored day); at the latest stored day there is nothing left to replay; `make replay-reset` deletes the replay database, so the next run starts over from `REPLAY_START`; with nothing stored, replay is refused
   - [x] the member's own database is only read; replay makes no EODHD calls
-  - [ ] the replay speed (`REPLAY_DAYS_PER_MINUTE`, more than 0 and at most 6) sets the schedule of the replay pipeline (item 7)
-- [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001)
+  - [x] the replay interval (`REPLAY_INTERVAL_SECONDS`, within the limits of REQ-DAT-003) sets the schedule of the replay pipeline (item 7)
+- [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001, REQ-DAT-003)
   - [x] Airflow 3.3.2 in Compose, LocalExecutor, with its own database `airflow` on the project's PostgreSQL server, created when missing, and its own login, which owns only that database; its page on `127.0.0.1:${AIRFLOW_PORT}`, with a login for one admin user, whose password is set in `.env`
   - [x] each task calls a service built from the project image over the Compose network, so Airflow's own image holds none of the project's packages and needs no access to Docker; Airflow receives only the settings its pipelines read, never the EODHD key
   - [x] data service: `POST /load` runs the load and answers with its report, `POST /replay` copies the next day and answers with it (none when nothing is left); reachable only inside Compose
   - [x] daily update pipeline: one load on weekdays at 16:00 New York time plus `FINAL_DELAY_MINUTES`; never retried, since one load uses the free tier's day
-  - [ ] replay pipeline: one replayed day every 60 / `REPLAY_DAYS_PER_MINUTE` seconds
-  - [ ] both pipelines start paused, the operator unpauses one of them; neither catches up on missed runs, and each runs once at a time
+  - [x] replay pipeline: one replayed day every `REPLAY_INTERVAL_SECONDS` seconds
+  - [x] both pipelines start paused, the operator unpauses one of them; neither catches up on missed runs, and each runs once at a time
   - [ ] training pipeline: train, then promote, for each security. While replay runs, training, forecasts and the API read the replay database, never the member's own; models trained during replay are kept apart from the member's own models (for example their own registered names, `replay-forecast-AAPL.US`); the mode follows the unpaused ingestion pipeline
 - [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
 
@@ -230,7 +232,7 @@ Optional, after item 7: API access (REQ-SVC-004), CI building the images (REQ-AU
 Interfaces to agree first, so items 2–7 can be built in parallel:
 - Commands: `load` (`make load` and `make update`), `replay`, `replay-reset`, `train`, `promote` (each `python -m forecasting.commands <name>` run in the project image, and a `make` target); Airflow calls the same functions through the services: `load` and `replay` through the data service, `train` and `promote` through the API.
 - Registered model names: one per security, for example `forecast-AAPL.US`.
-- Settings: MLflow address, evaluation window (default 60 trading days), replay speed (`REPLAY_DAYS_PER_MINUTE`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
+- Settings: MLflow address, evaluation window (default 60 trading days), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings, communication, work tracking, reviews), to be agreed by the team.

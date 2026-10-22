@@ -34,6 +34,8 @@ x-airflow: &airflow
     AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?set in .env}
     # Read by the daily update pipeline.
     FINAL_DELAY_MINUTES: ${FINAL_DELAY_MINUTES:?set in .env}
+    # Read by the replay pipeline.
+    REPLAY_INTERVAL_SECONDS: ${REPLAY_INTERVAL_SECONDS:?set in .env}
   volumes:
     - ./airflow/dags:/opt/airflow/dags:ro
     - airflow-logs:/opt/airflow/logs

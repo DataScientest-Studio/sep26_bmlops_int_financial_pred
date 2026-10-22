@@ -7,7 +7,7 @@ Forecasts the next trading day's price change of a security and offers the forec
 Group project of the DataScientest MLOps bootcamp (sep26 cohort).
 
 ## Status
-Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`), also on a schedule in Airflow (`make airflow`), and so does replaying stored history day by day (`make replay`); training, forecasts and the app are not built yet.
+Under construction. Loading prices, splits and dividends from EODHD works (`make load`, `make update`), and so does replaying stored history day by day (`make replay`), both also on a schedule in Airflow (`make airflow`); training, forecasts and the app are not built yet.
 
 ## Project structure
 ```
@@ -21,11 +21,12 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── Dockerfile                   project image: the code with its locked packages, for the commands, the API and the data service
 ├── .dockerignore                what the project image is built from
 ├── compose.yaml                 services run in Docker: the PostgreSQL database, the API, the data service, Airflow, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow page and logins, model folder, first day of history, replay start, EODHD key)
+├── .env.example                 template for the local .env (database login, Airflow page and logins, model folder, first day of history, replay start and interval, EODHD key)
 ├── airflow/
 │   ├── create-database.sql      creates Airflow's own database and login on the project's database server
 │   └── dags/
-│       └── daily_update.py      the daily update pipeline: one load on every weekday after the US close
+│       ├── daily_update.py      the daily update pipeline: one load on every weekday after the US close
+│       └── replay.py            the replay pipeline: one replayed trading day per interval
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
@@ -145,9 +146,13 @@ DELETE FROM prices WHERE symbol LIKE '%.SAMPLE';
 Replay plays stored history back one trading day at a time, as if each day were arriving live, so the pipeline can be shown over weeks of data within minutes. It copies prices, splits and dividends from the database into a database of its own on the same server, named after it with `_replay` (`forecasting_replay` for `forecasting`), and only reads the database it copies from; it makes no EODHD calls. The first `make replay` creates the replay database and fills it with every stored day up to `REPLAY_START`, which must lie between the first and the latest stored day. Each later run copies the replay database's latest day again, so a price that has become final since replaces the provisional one, and then the next stored day. Each run copies all or nothing. Once the latest stored day is copied, nothing is left to replay. `make replay-reset` deletes the replay database to start over.
 
 ### Scheduled pipelines
-Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on http://localhost:8080 (the port is `AIRFLOW_PORT` in `.env`). Log in as `admin` with the password `AIRFLOW_ADMIN_PASSWORD` from `.env`. Airflow keeps its own database and login on the project's database server, both created on the first start, and it receives none of the project's settings apart from `FINAL_DELAY_MINUTES`, never the EODHD key. Its tasks call the data service, which runs the load and the replay inside Docker and is not reachable from the host.
+Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on http://localhost:8080 (the port is `AIRFLOW_PORT` in `.env`). Log in as `admin` with the password `AIRFLOW_ADMIN_PASSWORD` from `.env`. Airflow keeps its own database and login on the project's database server, both created on the first start, and it receives none of the project's settings apart from `FINAL_DELAY_MINUTES` and `REPLAY_INTERVAL_SECONDS`, never the EODHD key. Its tasks call the data service, which runs the load and the replay inside Docker and is not reachable from the host.
 
-The daily update pipeline (`daily_update`) runs one load on every weekday at 16:00 New York time plus `FINAL_DELAY_MINUTES`, the same load as `make update`. A failed run is not repeated, since a load uses the free tier's calls of the day; a run missed while Airflow was stopped is made up once if Airflow starts again on the same New York day, and skipped from the next day on; either way the next load fetches from the latest stored day on. A pipeline starts paused: switch it on with its toggle on the page. While it is on, run no `make load` or `make update` by hand.
+The daily update pipeline (`daily_update`) runs one load on every weekday at 16:00 New York time plus `FINAL_DELAY_MINUTES`, the same load as `make update`. A failed run is not repeated, since a load uses the free tier's calls of the day; a run missed while Airflow was stopped is made up once if Airflow starts again on the same New York day, and skipped from the next day on; either way the next load fetches from the latest stored day on.
+
+The replay pipeline (`replay`) replays one trading day every `REPLAY_INTERVAL_SECONDS` seconds, the same replay as `make replay` (see [Replay](#replay)). Airflow refuses to load it while the interval lies outside its limits and names them on its page. A missed run is not made up, and a run that is still going delays the next one. Once the latest stored day is replayed, each run is skipped: switch the pipeline off.
+
+A pipeline starts paused: switch it on with its toggle on the page. Switch on only one of the two pipelines at a time, and while either is on, run none of `make load`, `make update`, `make replay` or `make replay-reset` by hand.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses their own key:
