@@ -4,10 +4,10 @@ import os
 from datetime import timedelta
 
 import pendulum
-import requests
 from airflow.sdk import Asset, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 from airflow.timetables.trigger import CronTriggerTimetable
+from data_service_call import post_to_data_service
 
 # The data service inside Compose; it runs the same load as `make update`.
 LOAD_URL = "http://data:8000/load"
@@ -49,10 +49,8 @@ def daily_update():
         due_day = pendulum.instance(dag_run.run_after).in_timezone(NEW_YORK).date()
         if due_day != pendulum.now(NEW_YORK).date():
             raise AirflowSkipException(f"Due on {due_day}; a missed run is skipped.")
-        response = requests.post(LOAD_URL, timeout=LOAD_TIMEOUT.total_seconds())
-        response.raise_for_status()
 
-        return response.json()
+        return post_to_data_service(LOAD_URL, LOAD_TIMEOUT)
 
     load()
 

@@ -293,7 +293,7 @@ TAGS: phase-2
 VERIFICATION: Demonstration
 TITLE: Scheduled training pipeline
 STATEMENT: >>>
-On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps.
+On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps. A failed run shows its reason on the pipeline's page.
 <<<
 
 [REQUIREMENT]

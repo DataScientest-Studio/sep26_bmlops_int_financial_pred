@@ -1,14 +1,15 @@
 """Acceptance tests of the data requirements (black box)."""
 
+from collections.abc import Iterator
 from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
 import pytest
-from sqlalchemy import text
+from sqlalchemy import make_url, text
 
 from forecasting.datasets import dataset_version
-from forecasting.db import connect, read_prices
+from forecasting.db import connect, drop_database, read_prices
 from forecasting.load import load_history
 from forecasting.replay import replay_next_day
 from forecasting.trading_calendar import session_close, trading_days
@@ -34,6 +35,23 @@ def _stored_rows(engine, symbol: str) -> pd.DataFrame:
 def _last_row(engine, symbol: str) -> pd.Series:
     """Read the stored quote of the latest day of one symbol."""
     return _stored_rows(engine, symbol).iloc[-1]
+
+
+@pytest.fixture
+def spaced_password_replay_url(engine, replay_url, worker_id) -> Iterator[str]:
+    """Replay URL on a login of its own whose password holds a space; dropped after."""
+    role = f"replay_login_{worker_id}"
+    password = "two words"
+    with engine.begin() as connection:
+        connection.execute(text(f'DROP ROLE IF EXISTS "{role}"'))
+        create = f"CREATE ROLE \"{role}\" LOGIN CREATEDB PASSWORD '{password}'"
+        connection.execute(text(create))
+    url = make_url(replay_url).set(username=role, password=password)
+    spaced_url = url.render_as_string(hide_password=False)
+    yield spaced_url
+    drop_database(spaced_url)
+    with engine.begin() as connection:
+        connection.execute(text(f'DROP ROLE "{role}"'))
 
 
 def _training_rows(engine, settings) -> pd.DataFrame:
@@ -426,6 +444,14 @@ def test_replay_at_the_latest_stored_day_has_nothing_left(engine, settings, repl
     latest = max(load_history_around_start(engine, settings))
     replay_next_day(engine, replay_url, latest)
     assert replay_next_day(engine, replay_url, latest) is None
+
+
+def test_replay_works_with_a_password_holding_a_space(
+    engine, settings, spaced_password_replay_url
+):
+    """REQ-DAT-003: replay copies into a database of its own on any valid login."""
+    start = min(load_history_around_start(engine, settings))
+    assert replay_next_day(engine, spaced_password_replay_url, start) == start
 
 
 def test_replay_with_nothing_stored_is_refused(engine, settings, replay_url):

@@ -1,5 +1,7 @@
 """Access to the project database and the databases built with its tables."""
 
+from typing import Any
+
 import pandas as pd
 import psycopg
 from psycopg import sql
@@ -46,7 +48,7 @@ def create_database(database_url: str) -> None:
     """
     drop_database(database_url)
     create = sql.SQL("CREATE DATABASE {}")
-    with psycopg.connect(_server_url(database_url), autocommit=True) as server:
+    with psycopg.connect(**_server_login(database_url), autocommit=True) as server:
         server.execute(create.format(_name(database_url)))
     engine = connect(database_url).execution_options(isolation_level="AUTOCOMMIT")
     with engine.connect() as connection:
@@ -68,7 +70,7 @@ def database_exists(database_url: str) -> bool:
     """
     name = make_url(database_url).database
     query = "SELECT 1 FROM pg_database WHERE datname = %s"
-    with psycopg.connect(_server_url(database_url)) as server:
+    with psycopg.connect(**_server_login(database_url)) as server:
         found = server.execute(query, (name,)).fetchone()
 
     return found is not None
@@ -83,7 +85,7 @@ def drop_database(database_url: str) -> None:
         database_url: SQLAlchemy URL of the database to drop.
     """
     drop = sql.SQL("DROP DATABASE IF EXISTS {} WITH (FORCE)")
-    with psycopg.connect(_server_url(database_url), autocommit=True) as server:
+    with psycopg.connect(**_server_login(database_url), autocommit=True) as server:
         server.execute(drop.format(_name(database_url)))
 
 
@@ -96,13 +98,13 @@ def _name(database_url: str) -> sql.Identifier:
     return sql.Identifier(name)
 
 
-def _server_url(database_url: str) -> str:
-    """Return the psycopg URL of the server's `postgres` database on the same login."""
-    # SQLAlchemy names its driver in the URL (postgresql+psycopg://); psycopg itself
-    # takes only the plain postgresql:// form.
-    url = make_url(database_url).set(drivername="postgresql", database="postgres")
+def _server_login(database_url: str) -> dict[str, Any]:
+    """Return psycopg's connection values for the server's `postgres` database."""
+    # Separate values, not a URL: psycopg refuses a URL whose password holds a space
+    # and repeats the password in its error message.
+    url = make_url(database_url).set(database="postgres")
 
-    return url.render_as_string(hide_password=False)
+    return url.translate_connect_args(username="user", database="dbname")
 
 
 def read_prices(engine: Engine, symbol: str) -> pd.DataFrame:

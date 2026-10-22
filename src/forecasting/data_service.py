@@ -2,12 +2,26 @@
 
 from datetime import date
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 from forecasting.commands import run_load, run_replay
 from forecasting.load import LoadReport
 
 app = FastAPI(title="Financial forecasting data service")
+
+
+@app.exception_handler(Exception)
+def report_failure(request: Request, error: Exception) -> JSONResponse:
+    """Answer a failed load or replay with its reason, so the pipeline can show it.
+
+    The error still reaches the service's own log with its traceback.
+
+    @relation(REQ-AUT-001, scope=function)
+    """
+    reason = f"{type(error).__name__}: {error}"
+
+    return JSONResponse(status_code=500, content={"detail": reason})
 
 
 @app.get("/health")

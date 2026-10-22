@@ -43,3 +43,19 @@ def test_replay_answers_none_when_nothing_is_left(monkeypatch: pytest.MonkeyPatc
 
     assert response.status_code == 200
     assert response.json() == {"day": None}
+
+
+def test_failed_load_answers_with_its_reason(monkeypatch: pytest.MonkeyPatch):
+    """A load that fails answers with the error's type and message."""
+
+    def fail() -> LoadReport:
+        raise RuntimeError("EODHD answered 401 for eod/TEST.US")
+
+    monkeypatch.setattr(data_service, "run_load", fail)
+    client = TestClient(data_service.app, raise_server_exceptions=False)
+    response = client.post("/load")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "detail": "RuntimeError: EODHD answered 401 for eod/TEST.US"
+    }

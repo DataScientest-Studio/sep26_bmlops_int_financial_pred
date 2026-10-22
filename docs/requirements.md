@@ -211,7 +211,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Demonstration
 
-**Statement**: On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps.
+**Statement**: On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps. A failed run shows its reason on the pipeline's page.
 
 ### Outcome collection
 
