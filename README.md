@@ -152,6 +152,8 @@ The daily update pipeline (`daily_update`) runs one load on every weekday at 16:
 
 The replay pipeline (`replay`) replays one trading day every `REPLAY_INTERVAL_SECONDS` seconds, the same replay as `make replay` (see [Replay](#replay)). Airflow refuses to load it while the interval lies outside its limits and names them on its page. A missed run is not made up, and a run that is still going delays the next one. Once the latest stored day is replayed, each run is skipped: switch the pipeline off.
 
+Each pipeline announces its work, so that a pipeline waiting for new prices can start on it: the daily update after each load as the asset `prices`, also after one that found no new trading day, and the replay pipeline after each replayed day as the asset `replay-prices`. The page lists both under "Assets". A skipped or failed run announces nothing.
+
 A pipeline starts paused: switch it on with its toggle on the page. Switch on only one of the two pipelines at a time, and while either is on, run none of `make load`, `make update`, `make replay` or `make replay-reset` by hand.
 
 ### EODHD key

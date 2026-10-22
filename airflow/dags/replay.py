@@ -5,12 +5,16 @@ from datetime import timedelta
 
 import pendulum
 import requests
-from airflow.sdk import dag, task
+from airflow.sdk import Asset, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 from airflow.timetables.trigger import DeltaTriggerTimetable
 
 # The data service inside Compose; it runs the same replay as `make replay`.
 REPLAY_URL = "http://data:8000/replay"
+
+# Announced after each replayed day, so a pipeline waiting for new prices
+# starts on it.
+REPLAY_PRICES = Asset("replay-prices")
 
 # Limits of REPLAY_INTERVAL_SECONDS.
 SHORTEST_INTERVAL_SECONDS = 10
@@ -43,7 +47,7 @@ def replay():
     @relation(REQ-DAT-003, scope=function)
     """
 
-    @task(execution_timeout=REPLAY_TIMEOUT)
+    @task(execution_timeout=REPLAY_TIMEOUT, outlets=[REPLAY_PRICES])
     def replay_day() -> dict:
         """Replays the next trading day; skips once nothing is left."""
         response = requests.post(REPLAY_URL, timeout=REPLAY_TIMEOUT.total_seconds())

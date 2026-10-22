@@ -5,12 +5,15 @@ from datetime import timedelta
 
 import pendulum
 import requests
-from airflow.sdk import dag, task
+from airflow.sdk import Asset, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 from airflow.timetables.trigger import CronTriggerTimetable
 
 # The data service inside Compose; it runs the same load as `make update`.
 LOAD_URL = "http://data:8000/load"
+
+# Announced after each load, so a pipeline waiting for new prices starts on it.
+PRICES = Asset("prices")
 
 # The US exchanges close at 16:00 New York time.
 NEW_YORK = "America/New_York"
@@ -38,7 +41,7 @@ def daily_update():
     @relation(REQ-DAT-002, scope=function)
     """
 
-    @task(execution_timeout=LOAD_TIMEOUT)
+    @task(execution_timeout=LOAD_TIMEOUT, outlets=[PRICES])
     def load(dag_run=None) -> dict:
         """Runs one load and returns its report; skips a run due on an earlier day."""
         # Airflow makes up the latest missed run when it starts; on a later New York
