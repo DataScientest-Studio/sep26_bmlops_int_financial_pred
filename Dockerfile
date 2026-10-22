@@ -1,5 +1,5 @@
-# Project image of the commands, the API and the data service: the code with the locked
-# runtime packages.
+# Project image of the commands, the API, the data service and the MLflow server: the
+# code with the locked runtime packages.
 FROM python:3.12.14-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:0.12.5 /uv /bin/uv
 

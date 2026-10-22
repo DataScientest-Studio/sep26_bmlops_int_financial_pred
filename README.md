@@ -18,12 +18,11 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── pyproject.toml               project metadata and packages
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
-├── Dockerfile                   project image: the code with its locked packages, for the commands, the API and the data service
+├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
 ├── .dockerignore                what the project image is built from
-├── compose.yaml                 services run in Docker: the PostgreSQL database, the API, the data service, Airflow, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow page and logins, model folder, first day of history, replay start and interval, EODHD key)
+├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the data service, Airflow, and the project commands on demand
+├── .env.example                 template for the local .env (database login, Airflow and MLflow pages and logins, object-store login, model folder, final-price delay, first day of history, replay start and interval, EODHD key)
 ├── airflow/
-│   ├── create-database.sql      creates Airflow's own database and login on the project's database server
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on every weekday after the US close
 │       ├── data_service_call.py  the call of the data service both pipelines make; a failed call fails the task with the reason the service answered
@@ -35,10 +34,12 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   │   ├── dividends.sql        creates the dividends table on the database's first start
 │   │   ├── prices.sql           creates the prices table on the database's first start
 │   │   └── splits.sql           creates the splits table on the database's first start
-│   └── queries/
-│       ├── examples.sql         example queries on the prices table
-│       ├── sample-data.sql      made-up prices for trying them
-│       └── remove-sample-data.sql  removes the made-up prices again
+│   ├── queries/
+│   │   ├── examples.sql         example queries on the prices table
+│   │   ├── sample-data.sql      made-up prices for trying them
+│   │   └── remove-sample-data.sql  removes the made-up prices again
+│   └── tools/
+│       └── create-database.sql  creates a service's own database and login on the project's database server (Airflow, MLflow)
 ├── docs/
 │   ├── requirements.sdoc        requirements source (StrictDoc)
 │   ├── requirements.md          readable version, generated
@@ -104,7 +105,7 @@ After that, `make update` once a day adds the new trading days.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
 
-`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. Copies of the training datasets are kept the same way in `datasets/`. `docker compose logs api` shows the API's output, errors included.
+`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running; `make api` also starts the MLflow server and the object store. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. Copies of the training datasets are kept the same way in `datasets/`. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -120,6 +121,8 @@ After that, `make update` once a day adds the new trading days.
 | `make contract` | checks how EODHD delivers data, with your own key from `.env`; a check your key's history, remaining calls or plan cannot support is skipped with its reason |
 | `make api` | start the API on http://localhost:8000, documentation at `/docs`; returns once it answers |
 | `make api-stop` | stop the API |
+| `make mlflow` | start the MLflow server with the database and the object store; its page is on http://localhost:5000 (see "Model tracking" below); returns once it answers |
+| `make mlflow-stop` | stop the MLflow server and the object store; the database keeps running |
 | `make airflow` | start Airflow with the data service; its page is on http://localhost:8080 (see "Scheduled pipelines" below); returns once it answers |
 | `make airflow-stop` | stop Airflow and the data service; the database keeps running |
 
@@ -165,6 +168,12 @@ A pipeline starts paused: switch it on with its toggle on the page. Switch on on
 A training dataset gets a version id: its rows are written to `datasets/<symbol>.csv` and recorded with [DVC](https://dvc.org) (Data Version Control), and DVC's fingerprint of the file's content is the version id. The same rows always get the same id, and any change in them gives a new one. DVC keeps a copy of every version in `datasets/.dvc/cache/`, named after its id; identical data is stored only once. Training reads from the database, never from these copies.
 
 DVC runs here without Git and without a remote: the copies stay on your machine, are never committed (`datasets/` is gitignored) and are never deleted automatically. Deleting `datasets/` loses these copies.
+
+### Model tracking
+[MLflow](https://mlflow.org) records the training runs and holds the model registry. `make mlflow` starts the MLflow server (and `make api` starts it along with the API); its page is on http://localhost:5000 (the port is `MLFLOW_PORT` in `.env`). It keeps its run and model records in its own database `mlflow` on the project's database server, with its own login (`MLFLOW_DB_PASSWORD` in `.env`), both created on the first start, and stores the model files in the object store (see [Object store](#object-store)). The API and the project commands reach the server inside Docker at `http://mlflow:5000`.
+
+### Object store
+[SeaweedFS](https://github.com/seaweedfs/seaweedfs) runs in Docker (`object-store`) as an S3-compatible object store for files that do not belong in PostgreSQL: MLflow's model files (bucket `mlflow`) and DVC's dataset copies (bucket `datasets`). Both buckets are created on the first start; the data lives in a Docker volume (`object-store-data`) and survives restarts. Only the services inside Docker reach it (`OBJECT_STORE_USER` and `OBJECT_STORE_PASSWORD` in `.env`); no port is published on the host.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses their own key:

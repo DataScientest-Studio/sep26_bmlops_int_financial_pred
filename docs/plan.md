@@ -209,8 +209,8 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [x] Compose runs the API from it next to the database; the commands and the API share the project's `models/` folder
   - [x] paths (securities file, `db/init`) do not depend on the folder a command starts in
 - [ ] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
-  - [ ] the object store, SeaweedFS, in Compose: an exact image version, its data in a volume, no published port
-  - [ ] the MLflow server in Compose: its records in the database `mlflow` on the project's PostgreSQL server, its model files in the object store, its page on `127.0.0.1:${MLFLOW_PORT}`; the API and the commands reach it inside Compose
+  - [x] the object store, SeaweedFS, in Compose: an exact image version, its data in a volume, no published port
+  - [x] the MLflow server in Compose: its records in the database `mlflow` on the project's PostgreSQL server, its model files in the object store, its page on `127.0.0.1:${MLFLOW_PORT}`; the API and the commands reach it inside Compose
   - [ ] the project image carries the commit it was built from: `make` passes it in when it builds the image, a build from a tree with uncommitted changes says so, and a build `make` did not start records the code version as `unknown`
   - [ ] every training run records its parameters, metrics, dataset version, code version and model (1)
   - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed (1)
@@ -247,7 +247,7 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
 - Registered model names: one per security, for example `forecast-AAPL.US`.
 - Assets: `prices` (after each load of the member's own database), `replay-prices` (after each replayed day in the replay database).
 - Functions: `dataset_version(settings, symbol, rows) -> version id`, called by training with the rows it trains on, before it trains; MLflow records the id with the run.
-- Settings: MLflow address, MLflow page port (`MLFLOW_PORT`), evaluation window (its default is chosen with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
+- Settings: MLflow page port (`MLFLOW_PORT`), evaluation window (its default is chosen with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
 - Code version: the commit the project image was built from; `unknown` when `make` did not build it.
 
 ## Open

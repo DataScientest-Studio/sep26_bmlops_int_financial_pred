@@ -3,6 +3,7 @@
         load update replay replay-reset \
         test acceptance contract \
         api api-stop \
+        mlflow mlflow-stop \
         airflow airflow-stop
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
@@ -82,6 +83,16 @@ api:
 # Stops the API.
 api-stop:
 	docker compose stop api
+
+# Starts the MLflow server and its page with the database and the object store,
+# rebuilt when the code changed; returns once it answers on http://localhost:5000
+# (MLFLOW_PORT in .env).
+mlflow:
+	docker compose up --build --detach --wait mlflow
+
+# Stops the MLflow server and the object store; the database keeps running.
+mlflow-stop:
+	docker compose stop mlflow object-store
 
 # Airflow's services that keep running; its database and init steps run once on the way.
 AIRFLOW_SERVICES = airflow-apiserver airflow-scheduler airflow-dag-processor

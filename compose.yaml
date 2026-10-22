@@ -3,10 +3,12 @@ x-project: &project
   build: .
   image: financial-prediction:local
   env_file: .env
-  # Inside Compose the database is reached by its service name and its own port.
+  # Inside Compose the database and the MLflow server are reached by their service
+  # names and their own ports.
   environment:
     POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
+    MLFLOW_TRACKING_URI: http://mlflow:5000
   # A missing models or datasets folder stops the start, so Docker never creates
   # it as root.
   volumes:
@@ -86,6 +88,11 @@ services:
       interval: 2s
       timeout: 5s
       retries: 15
+    depends_on:
+      db:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
 
   # Runs the load and the replay for the scheduled pipelines; reachable only inside
   # Compose, so no port is published on the host.
@@ -102,6 +109,85 @@ services:
       timeout: 5s
       retries: 15
 
+  # Holds the model files for MLflow and the dataset copies for DVC; reachable only
+  # inside Compose on its S3 port 8333, so no port is published on the host.
+  object-store:
+    image: chrislusf/seaweedfs:4.48
+    command: [mini, -dir=/data, "-bucket=mlflow,datasets"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
+      AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
+    volumes:
+      - object-store-data:/data
+    healthcheck:
+      test: [CMD, nc, -z, 127.0.0.1, "8333"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # Creates MLflow's database and its login on the project's server when missing.
+  mlflow-database:
+    image: postgres:18.6-bookworm
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:?set in .env}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      PGDATABASE: ${POSTGRES_DB:?set in .env}
+      MLFLOW_DB_PASSWORD: ${MLFLOW_DB_PASSWORD:?set in .env}
+    command:
+      - sh
+      - -c
+      - >-
+        psql -v ON_ERROR_STOP=1 -v name=mlflow -v password="$$MLFLOW_DB_PASSWORD"
+        -f /db/tools/create-database.sql
+    volumes:
+      - ./db/tools/create-database.sql:/db/tools/create-database.sql:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The MLflow server and its page on 127.0.0.1: stores run and model records in
+  # PostgreSQL and model files in the object store.
+  mlflow:
+    image: financial-prediction:local
+    build: .
+    # The image's entrypoint run-as-owner looks up the owner of /app/models; MLflow
+    # mounts no project folder and writes no host files, so it starts directly.
+    entrypoint: []
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --backend-store-uri
+      - postgresql+psycopg://mlflow:${MLFLOW_DB_PASSWORD:?set in .env}@db:5432/mlflow
+      - --artifacts-destination
+      - s3://mlflow
+      - --allowed-hosts
+      - mlflow:5000,localhost:*,127.0.0.1:*
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://object-store:8333
+      AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
+      AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
+    ports:
+      - "127.0.0.1:${MLFLOW_PORT:?set in .env}:5000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:5000/health")
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    depends_on:
+      mlflow-database:
+        condition: service_completed_successfully
+      object-store:
+        condition: service_healthy
+
   # Creates Airflow's database and its login on the project's server when missing.
   airflow-database:
     image: postgres:18.6-bookworm
@@ -115,10 +201,10 @@ services:
       - sh
       - -c
       - >-
-        psql -v ON_ERROR_STOP=1 -v password="$$AIRFLOW_DB_PASSWORD"
-        -f /airflow/create-database.sql
+        psql -v ON_ERROR_STOP=1 -v name=airflow -v password="$$AIRFLOW_DB_PASSWORD"
+        -f /db/tools/create-database.sql
     volumes:
-      - ./airflow/create-database.sql:/airflow/create-database.sql:ro
+      - ./db/tools/create-database.sql:/db/tools/create-database.sql:ro
     depends_on:
       db:
         condition: service_healthy
@@ -195,4 +281,5 @@ services:
 
 volumes:
   db-data:
+  object-store-data:
   airflow-logs:

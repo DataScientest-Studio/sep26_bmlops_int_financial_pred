@@ -5,6 +5,7 @@ description = "Next-day price change forecasting service with an automated MLOps
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "boto3>=1.43.118",
     "dotenv>=0.9.9",
     "dvc==3.67.1",
     "exchange-calendars>=4.13.2",
