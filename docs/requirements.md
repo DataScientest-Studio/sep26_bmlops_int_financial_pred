@@ -162,7 +162,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: A newly trained model becomes the production model only if its mean absolute error on the configured evaluation window is lower than that of the current production model on the same days; otherwise, a tie included, the current production model stays in place. The first model trained for a security becomes its production model.
+**Statement**: A newly trained model becomes the production model only if it is better than the current production model by the agreed rule; otherwise the current production model stays in place. The first model trained for a security becomes its production model.
 
 ## Service
 

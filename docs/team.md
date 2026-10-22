@@ -47,4 +47,4 @@ Alternatives:
 - Task list in Slack or a shared document: no setup; no assignment, history or link to the code.
 
 ## Code review
-Once the foundation is built, every change goes through a pull request (`plan.md`, "Code review" in Open). The reviewer is the next member in the ring: Data → Model → Service → Data. So every member also knows a second area.
+Work from a member's own branch reaches `main` through a pull request (`plan.md`, Decisions, "Code review"); an approval is not required yet. Once it is, the reviewer is the next member in the ring: Data → Model → Service → Data. So every member also knows a second area.
