@@ -222,7 +222,7 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [x] `dataset_version` writes the rows it is given, without row numbers, to `datasets/<symbol>.csv`, records the file with DVC without Git and returns DVC's fingerprint of it as the version id; the same rows always get the same id, in the member's own database and in the replay database alike
   - [ ] before training a security, training passes the rows it trains on to `dataset_version`
   - [x] each distinct dataset is kept as a full copy in DVC's store on the member's own machine, so a dataset can be brought back by its id; no remote outside the member's own machine (price data never leaves it), and older copies are never deleted, since without Git DVC's clean-up would remove them; the snapshot is a record, training reads from the database
-  - [ ] DVC copies each dataset version into the object store (item 3)
+  - [x] DVC copies each dataset version into the object store (item 3)
   - [ ] MLflow records it with the run
 - [x] **6 Replay** (7 for the interval; REQ-DAT-003)
   - [x] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today

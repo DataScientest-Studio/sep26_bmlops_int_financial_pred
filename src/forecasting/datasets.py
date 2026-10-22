@@ -10,19 +10,24 @@ import yaml
 
 from forecasting.config import Settings
 
+# Address of the object store inside Compose, used when DVC remote is an S3 bucket.
+OBJECT_STORE_URL = "http://object-store:8333"
+
 
 def dataset_version(settings: Settings, symbol: str, rows: pd.DataFrame) -> str:
     """Record the rows a training run uses and return their version id.
 
     The rows are written as given, without row numbers, to `<symbol>.csv` in the
-    dataset folder and recorded with DVC, which keeps a copy of each distinct
-    content in its cache under the id. The same rows always get the same id.
+    dataset folder, recorded with DVC and pushed to the configured remote, which
+    keeps a copy of each distinct content under the id. The same rows always get
+    the same id.
 
     @relation(REQ-DAT-006, scope=function)
     @relation(REQ-CON-003, scope=function)
 
     Args:
-        settings: Settings of this deployment; `dataset_dir` is the folder.
+        settings: Settings of this deployment; `dataset_dir` is the folder and
+            `dataset_remote` the DVC remote.
         symbol: Ticker of the security, for example "AAPL.US".
         rows: The rows training uses.
 
@@ -35,9 +40,20 @@ def dataset_version(settings: Settings, symbol: str, rows: pd.DataFrame) -> str:
     folder = settings.dataset_dir
     if not (folder / ".dvc").exists():
         _run_dvc(folder, "init", "--no-scm")
+        _run_dvc(folder, "remote", "add", "--default", "store", settings.dataset_remote)
+        if settings.dataset_remote.startswith("s3://"):
+            _run_dvc(
+                folder,
+                "remote",
+                "modify",
+                "store",
+                "endpointurl",
+                OBJECT_STORE_URL,
+            )
     path = folder / f"{symbol}.csv"
     rows.to_csv(path, index=False)
     _run_dvc(folder, "add", path.name)
+    _run_dvc(folder, "push")
     record = yaml.safe_load(Path(f"{path}.dvc").read_text())
 
     return record["outs"][0]["md5"]

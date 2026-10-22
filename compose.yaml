@@ -9,6 +9,8 @@ x-project: &project
     POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
     MLFLOW_TRACKING_URI: http://mlflow:5000
+    AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
+    AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
   # A missing models or datasets folder stops the start, so Docker never creates
   # it as root.
   volumes:
@@ -24,6 +26,8 @@ x-project: &project
         create_host_path: false
   depends_on:
     db:
+      condition: service_healthy
+    object-store:
       condition: service_healthy
 
 # Settings of the Airflow services: only what Airflow and its pipelines read.
