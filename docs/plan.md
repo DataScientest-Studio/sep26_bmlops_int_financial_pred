@@ -237,14 +237,14 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [x] replay pipeline: one replayed day every `REPLAY_INTERVAL_SECONDS` seconds
   - [x] both pipelines start paused, the operator unpauses one of them; neither catches up on missed runs, and each runs once at a time
   - [x] both pipelines announce their work: the daily update after each load as the asset `prices`, also after one that found no new trading day; the replay pipeline after each replayed day as the asset `replay-prices`; a skipped or failed run announces nothing
-  - [ ] training pipeline: train, then promote, for each security. While replay runs, training, forecasts and the API read the replay database, never the member's own; models trained during replay are kept apart from the member's own models (for example their own registered names, `replay-forecast-AAPL.US`); the pipeline starts on either asset; the mode follows the unpaused ingestion pipeline
+  - [ ] training pipeline: starts on either `prices` or `replay-prices` (at most one run at a time, no catch-up, starts paused) and calls `POST /training` on the API for each configured security (`airflow-scheduler` depends on `api`, so `make airflow` starts the API too). While the replay database exists, training, `predict/` and the commands read the replay database instead of the member's own and keep replay runs and models under `replay-` names in MLflow (for example `replay-forecast-AAPL.US`); `make replay-reset` deletes the replay database and the `replay-` records in MLflow, returning the system to the member's own database and models
 - [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
 
 Optional, after item 7: API access (REQ-SVC-004), CI building the images (REQ-AUT-004).
 
 Interfaces to agree first, so items 2–7 can be built in parallel:
-- Commands: `load` (`make load` and `make update`), `replay`, `replay-reset`, `train`, `promote` (each `python -m forecasting.commands <name>` run in the project image, and a `make` target); Airflow calls the same functions through the services: `load` and `replay` through the data service, `train` and `promote` through the API.
-- Registered model names: one per security, for example `forecast-AAPL.US`.
+- Commands: `load` (`make load` and `make update`), `replay`, `replay-reset`, `train` (each `python -m forecasting.commands <name>` run in the project image, and a `make` target); Airflow calls the same functions through the services: `load` and `replay` through the data service, `train` through `POST /training` on the API (whether promotion runs inside `train` or as a step of its own is the Model area's choice).
+- Registered model names: one per security, `forecast-<symbol>` (for example `forecast-AAPL.US`), and `replay-forecast-<symbol>` while the replay database exists; `make replay-reset` removes the `replay-` models and runs.
 - Assets: `prices` (after each load of the member's own database), `replay-prices` (after each replayed day in the replay database).
 - Functions: `dataset_version(settings, symbol, rows) -> version id`, called by training with the rows it trains on, before it trains; MLflow records the id with the run.
 - Settings: MLflow page port (`MLFLOW_PORT`), evaluation window (its default is chosen with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The daily update's time follows from the US close and `FINAL_DELAY_MINUTES`.
