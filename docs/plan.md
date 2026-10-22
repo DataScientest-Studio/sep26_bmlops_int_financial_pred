@@ -211,7 +211,7 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
 - [ ] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
   - [x] the object store, SeaweedFS, in Compose: an exact image version, its data in a volume, no published port
   - [x] the MLflow server in Compose: its records in the database `mlflow` on the project's PostgreSQL server, its model files in the object store, its page on `127.0.0.1:${MLFLOW_PORT}`; the API and the commands reach it inside Compose
-  - [ ] the project image carries the commit it was built from: `make` passes it in when it builds the image, a build from a tree with uncommitted changes says so, and a build `make` did not start records the code version as `unknown`
+  - [x] the project image carries the commit it was built from: `make` passes it in when it builds the image, a build from a tree with uncommitted changes says so, and a build `make` did not start records the code version as `unknown`
   - [ ] every training run records its parameters, metrics, dataset version, code version and model (1)
   - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed (1)
 - [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)

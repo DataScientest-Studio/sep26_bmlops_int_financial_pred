@@ -56,3 +56,15 @@ def test_history_start_before_the_calendar_is_refused(monkeypatch, tmp_path):
     monkeypatch.setenv("HISTORY_START", "1979-12-31")
     with pytest.raises(ValueError, match="HISTORY_START"):
         load_settings()
+
+
+def test_code_version_defaults_to_unknown(monkeypatch):
+    """Without CODE_VERSION in the environment, the code version is unknown."""
+    monkeypatch.delenv("CODE_VERSION", raising=False)
+    assert load_settings().code_version == "unknown"
+
+
+def test_code_version_reads_the_environment(monkeypatch):
+    """When CODE_VERSION is set, the settings report that commit."""
+    monkeypatch.setenv("CODE_VERSION", "b64fa1e")
+    assert load_settings().code_version == "b64fa1e"

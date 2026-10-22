@@ -1,6 +1,9 @@
 # Settings of the services that run from the project image.
 x-project: &project
-  build: .
+  build:
+    context: .
+    args:
+      CODE_VERSION: ${CODE_VERSION:-unknown}
   image: financial-prediction:local
   env_file: .env
   # Inside Compose the database and the MLflow server are reached by their service
@@ -154,7 +157,10 @@ services:
   # PostgreSQL and model files in the object store.
   mlflow:
     image: financial-prediction:local
-    build: .
+    build:
+      context: .
+      args:
+        CODE_VERSION: ${CODE_VERSION:-unknown}
     # The image's entrypoint run-as-owner looks up the owner of /app/models; MLflow
     # mounts no project folder and writes no host files, so it starts directly.
     entrypoint: []

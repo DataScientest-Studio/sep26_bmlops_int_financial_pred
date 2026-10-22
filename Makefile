@@ -10,6 +10,10 @@
 # (for example by ROS) would put foreign packages and pytest plugins first.
 unexport PYTHONPATH
 
+# Commit the project image is built from, with -dirty when tracked files have
+# uncommitted changes.
+export CODE_VERSION = $(shell git rev-parse HEAD)$(if $(shell git status --porcelain --untracked-files=no),-dirty)
+
 # Creates .venv with the pinned Python and the locked packages.
 setup:
 	uv sync --locked

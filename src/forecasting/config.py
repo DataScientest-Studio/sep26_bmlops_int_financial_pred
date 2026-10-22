@@ -51,6 +51,7 @@ class Settings:
         model_dir: Folder where trained models are saved.
         dataset_dir: Folder where DVC keeps the copies of the training datasets.
         dataset_remote: DVC remote where `dataset_version` pushes each copy.
+        code_version: Git commit the image was built from, or "unknown".
         securities: The securities the system loads, trains and forecasts.
         indices: Market indices loaded as reference series, never forecasts.
         final_delay: Time after an exchange's close from which a fetched price is final.
@@ -65,6 +66,7 @@ class Settings:
     model_dir: Path
     dataset_dir: Path
     dataset_remote: str
+    code_version: str
     securities: tuple[Security, ...]
     indices: tuple[Security, ...]
     final_delay: timedelta
@@ -77,12 +79,13 @@ def load_settings() -> Settings:
     """Read the settings from the environment and the securities file.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES, HISTORY_START and REPLAY_START. A
-    missing variable raises KeyError.
+    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES, HISTORY_START and REPLAY_START
+    (a missing variable raises KeyError); CODE_VERSION (defaults to "unknown").
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-003, scope=function)
     @relation(REQ-DAT-007, scope=function)
+    @relation(REQ-MOD-004, scope=function)
     @relation(REQ-AUT-005, scope=function)
 
     Returns:
@@ -121,6 +124,7 @@ def load_settings() -> Settings:
         model_dir=Path(env["MODEL_DIR"]),
         dataset_dir=DATASET_DIR,
         dataset_remote=DATASET_REMOTE,
+        code_version=env.get("CODE_VERSION", "unknown"),
         securities=securities,
         indices=indices,
         final_delay=final_delay,

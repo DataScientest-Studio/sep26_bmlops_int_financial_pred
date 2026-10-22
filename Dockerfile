@@ -19,5 +19,10 @@ COPY db/init/ db/init/
 RUN uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
 
+# Passed in by `make` when it builds the image; defaults to "unknown" when built
+# directly without `make`.
+ARG CODE_VERSION=unknown
+ENV CODE_VERSION=${CODE_VERSION}
+
 COPY tools/run-as-owner.sh /usr/local/bin/run-as-owner
 ENTRYPOINT ["run-as-owner"]
