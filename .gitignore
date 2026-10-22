@@ -10,12 +10,10 @@ internal/
 # Local settings and passwords
 .env
 
-# Trained models and dataset copies; the empty folders are kept, so Docker never
-# has to create them (as root).
-models/*
-!models/.gitkeep
+# Dataset copies; the empty folder is kept, so Docker never has to create it (as root).
 datasets/*
 !datasets/.gitkeep
+models/
 
 # Python cache
 __pycache__/

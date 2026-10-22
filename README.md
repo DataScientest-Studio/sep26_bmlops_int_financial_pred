@@ -21,12 +21,13 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
 ├── .dockerignore                what the project image is built from
 ├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the data service, Airflow, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow and MLflow pages and logins, object-store login, model folder, final-price delay, first day of history, replay start and interval, EODHD key)
+├── .env.example                 template for the local .env (database login, Airflow and MLflow pages and logins, object-store login, evaluation window, final-price delay, first day of history, replay start and interval, EODHD key)
 ├── airflow/
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on every weekday after the US close
 │       ├── data_service_call.py  the call of the data service both pipelines make; a failed call fails the task with the reason the service answered
-│       └── replay.py            the replay pipeline: one replayed trading day per interval
+│       ├── replay.py            the replay pipeline: one replayed trading day per interval
+│       └── training.py          the training pipeline: trains each configured security when new prices arrive
 ├── config/
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
@@ -59,7 +60,6 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
 ├── datasets/                    copies of the training datasets with their version records, kept by DVC (gitignored)
-├── models/                      trained models, one folder per security, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
@@ -84,7 +84,7 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 │   └── fakes.py                 stand-in data source with generated prices
 └── tools/
     ├── export-requirements.sh   regenerates docs/requirements.md
-    └── run-as-owner.sh          starts the project image's commands, API and data service as the owner of models/
+    └── run-as-owner.sh          starts the project image's commands, API and data service as the owner of datasets/
 ```
 
 ## Setup
@@ -105,7 +105,7 @@ After that, `make update` once a day adds the new trading days.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
 
-`make load`, `make update`, `make replay`, `make replay-reset`, `make train`, `make predict` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running; `make api` also starts the MLflow server and the object store. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. Copies of the training datasets are kept the same way in `datasets/`. `docker compose logs api` shows the API's output, errors included.
+`make load`, `make update`, `make replay`, `make replay-reset`, `make train`, `make predict` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database, the object store and the MLflow server first if they are not running. Copies of the training datasets are kept in `datasets/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -114,9 +114,9 @@ After that, `make update` once a day adds the new trading days.
 | `make db-shell` | SQL prompt in the database |
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
-| `make replay-reset` | delete the replay database; the next `make replay` starts over from `REPLAY_START` |
-| `make train` | train a model for each configured security on its final closes, holding back the latest `EVALUATION_DAYS` trading days to score it; saves it in `models/` and prints its error next to the two baselines, "no change" and the mean change |
-| `make predict` | print each security's forecast for the next trading day from its newest model, with the close it starts from |
+| `make replay-reset` | delete the replay database and the replay models and runs in MLflow; the next `make replay` starts over from `REPLAY_START` |
+| `make train` | train a model for each configured security on its final closes, holding back the latest `EVALUATION_DAYS` trading days to score it; records the run and registers the model in MLflow, promotes it if it is the first or beats the production model, and prints its error next to the two baselines, "no change" and the mean change |
+| `make predict` | print each security's forecast for the next trading day from its production model, with the close it starts from |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |

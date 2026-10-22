@@ -48,9 +48,9 @@ class Settings:
 
     Attributes:
         database_url: SQLAlchemy URL of the project database.
-        model_dir: Folder where trained models are saved.
         dataset_dir: Folder where DVC keeps the copies of the training datasets.
         dataset_remote: DVC remote where `dataset_version` pushes each copy.
+        mlflow_tracking_uri: Address of the MLflow tracking server and model registry.
         code_version: Git commit the image was built from, or "unknown".
         securities: The securities the system loads, trains and forecasts.
         indices: Market indices loaded as reference series, never forecasts.
@@ -64,9 +64,9 @@ class Settings:
     """
 
     database_url: str = field(repr=False)
-    model_dir: Path
     dataset_dir: Path
     dataset_remote: str
+    mlflow_tracking_uri: str
     code_version: str
     securities: tuple[Security, ...]
     indices: tuple[Security, ...]
@@ -87,8 +87,9 @@ def load_settings() -> Settings:
     """Read the settings from the environment and the securities file.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    POSTGRES_DB, MODEL_DIR, FINAL_DELAY_MINUTES, HISTORY_START, REPLAY_START and
-    EVALUATION_DAYS (a missing variable raises KeyError); CODE_VERSION (defaults to
+    POSTGRES_DB, MLFLOW_PORT, FINAL_DELAY_MINUTES, HISTORY_START, REPLAY_START and
+    EVALUATION_DAYS (a missing variable raises KeyError); MLFLOW_TRACKING_URI
+    (defaults to "http://localhost:<MLFLOW_PORT>") and CODE_VERSION (defaults to
     "unknown").
 
     @relation(REQ-DAT-001, scope=function)
@@ -131,12 +132,16 @@ def load_settings() -> Settings:
     evaluation_days = int(env["EVALUATION_DAYS"])
     if evaluation_days < 1:
         raise ValueError("EVALUATION_DAYS must be 1 or more")
+    mlflow_port = int(env["MLFLOW_PORT"])
+    mlflow_tracking_uri = env.get(
+        "MLFLOW_TRACKING_URI", f"http://localhost:{mlflow_port}"
+    )
 
     return Settings(
         database_url=database_url.render_as_string(hide_password=False),
-        model_dir=Path(env["MODEL_DIR"]),
         dataset_dir=DATASET_DIR,
         dataset_remote=DATASET_REMOTE,
+        mlflow_tracking_uri=mlflow_tracking_uri,
         code_version=env.get("CODE_VERSION", "unknown"),
         securities=securities,
         indices=indices,

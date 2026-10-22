@@ -8,11 +8,11 @@ import os
 from datetime import date
 
 from forecasting.config import load_settings
-from forecasting.db import connect, drop_database
+from forecasting.db import connect
 from forecasting.eodhd import EodhdSource
 from forecasting.load import LoadReport, load_history
 from forecasting.predict import predict
-from forecasting.replay import replay_next_day
+from forecasting.replay import replay_next_day, reset_replay
 from forecasting.train import train
 
 
@@ -86,11 +86,11 @@ def replay() -> None:
 
 
 def replay_reset() -> None:
-    """Drop the replay database, so the next replay starts over from `REPLAY_START`.
+    """Drop the replay database and remove the replay models and runs in MLflow.
 
     @relation(REQ-DAT-003, scope=function)
     """
-    drop_database(load_settings().replay_database_url)
+    reset_replay(load_settings())
 
 
 def train_models() -> None:
@@ -104,10 +104,11 @@ def train_models() -> None:
     for security in settings.securities:
         result = train(engine, settings, security.symbol)
         scores = result.evaluation
+        status = "promoted" if result.promoted else "kept current"
         # Adjacent f-strings are joined without a space, so each continuation starts
         # with one. :.3% multiplies by 100 and adds %, so 0.01053 prints as 1.053%.
         print(
-            f"{result.symbol}: model {result.model_version}, MAE"
+            f"{result.symbol}: model {result.model_version} ({status}), MAE"
             f" {scores.model.mae:.3%} (persistence {scores.persistence.mae:.3%},"
             f" mean change {scores.mean_change.mae:.3%}),"
             f" skill {scores.model.skill:+.3f}"

@@ -161,21 +161,21 @@ Each item lists what makes it done; a ticked box is done, an open box is still t
   - [x] template README replaced
   - [x] `.gitignore` and `.env.example` in place
   - [x] CI passes (see "Continuous integration")
-- [ ] **2 Reproducible environment** (1)
+- [x] **2 Reproducible environment** (1)
   - [x] `pyproject.toml`, `uv.lock`, `.python-version`; works from a fresh clone
   - [x] Makefile targets `setup`, `db`, `load`, `update`, `api`, `test`
-  - [ ] Makefile targets `train`, `predict`, run in the project image like the other commands; trained models are kept in the project's `models/` folder (gitignored) until MLflow stores them (Phase 2, item 3)
+  - [x] Makefile targets `train`, `predict`, run in the project image like the other commands; trained models are kept in the project's `models/` folder (gitignored) until MLflow stores them (Phase 2, item 3)
 - [x] **3 PostgreSQL** (2): Compose file with only the database (exact image tag, data volume, credentials from `.env`); table `prices` keyed by (security, day)
 - [x] **4 One-time load script** (3, data source): loads the history of the agreed securities; a re-run creates no duplicates; API key read from `.env`
-- [ ] **5 Baseline training pipeline** (3; 4 for real data)
+- [x] **5 Baseline training pipeline** (3; 4 for real data)
   - [x] `read_prices` reads the stored prices of one security
-  - [ ] a training function builds the target (next-day change), trains, compares with the persistence and mean-change baselines, saves the model under `MODEL_DIR`
-  - [ ] a prediction function returns the next-day forecast for one security
-  - [ ] unit tests for feature building
-  - [ ] the acceptance tests of REQ-MOD-001–003 pass
-- [ ] **6 Initial API endpoints** (5)
+  - [x] a training function builds the target (next-day change), trains, compares with the persistence and mean-change baselines, saves the model under `MODEL_DIR`
+  - [x] a prediction function returns the next-day forecast for one security
+  - [x] unit tests for feature building
+  - [x] the acceptance tests of REQ-MOD-001–003 pass
+- [x] **6 Initial API endpoints** (5)
   - [x] FastAPI routes `training/` (runs training) and `predict/` (security in; forecast and model version out), wired to the training and prediction functions; unknown symbols refused
-  - [ ] the acceptance tests of REQ-SVC-001/002 pass
+  - [x] the acceptance tests of REQ-SVC-001/002 pass
 - [x] **7 Minimum tests and docs** (2–6)
   - [x] README section "Setup", from a fresh clone
   - [x] unit tests run in parallel with pytest-xdist; both endpoints covered by the acceptance tests of REQ-SVC-001/002
@@ -203,33 +203,33 @@ Course checklist for this phase (`references/course-checklist.md`): MLflow track
 
 Each item is one complete piece that fits the interfaces below; it is merged only when it works. Depends on: in brackets.
 
-- [ ] **1 Phase 1 finished**: the open boxes of the Phase 1 plan; every acceptance test of phase 1 passes. Blocks items 3 and 4 and the training pipeline of item 7; the other items need no trained model.
+- [x] **1 Phase 1 finished**: the open boxes of the Phase 1 plan; every acceptance test of phase 1 passes. Blocks items 3 and 4 and the training pipeline of item 7; the other items need no trained model.
 - [x] **2 Project image and `api` service** (REQ-AUT-003, REQ-AUT-005, REQ-AUT-006)
   - [x] one image holds the project's code and its locked packages; the commands run from it
   - [x] Compose runs the API from it next to the database; the commands and the API share the project's `models/` folder
   - [x] paths (securities file, `db/init`) do not depend on the folder a command starts in
-- [ ] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
+- [x] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
   - [x] the object store, SeaweedFS, in Compose: an exact image version, its data in a volume, no published port
   - [x] the MLflow server in Compose: its records in the database `mlflow` on the project's PostgreSQL server, its model files in the object store, its page on `127.0.0.1:${MLFLOW_PORT}`; the API and the commands reach it inside Compose
   - [x] the project image carries the commit it was built from: `make` passes it in when it builds the image, a build from a tree with uncommitted changes says so, and a build `make` did not start records the code version as `unknown`
-  - [ ] every training run records its parameters, metrics, dataset version, code version and model (1)
-  - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed (1)
-- [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
-  - [ ] one registered model per security
-  - [ ] a new model becomes production only if it is better by the rule chosen in "Better model" (Decision proposals); the first model always becomes production
-  - [ ] `predict/` uses the production model; the training response says whether the model was promoted
-- [ ] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
+  - [x] every training run records its parameters, metrics, dataset version, code version and model (1)
+  - [x] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed (1)
+- [x] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
+  - [x] one registered model per security
+  - [x] a new model becomes production only if it is better by the rule chosen in "Better model" (Decision proposals); the first model always becomes production
+  - [x] `predict/` uses the production model; the training response says whether the model was promoted
+- [x] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
   - [x] `dataset_version` writes the rows it is given, without row numbers, to `datasets/<symbol>.csv`, records the file with DVC without Git and returns DVC's fingerprint of it as the version id; the same rows always get the same id, in the member's own database and in the replay database alike
-  - [ ] before training a security, training passes the rows it trains on to `dataset_version`
+  - [x] before training a security, training passes the rows it trains on to `dataset_version`
   - [x] each distinct dataset is kept as a full copy in DVC's store on the member's own machine, so a dataset can be brought back by its id; no remote outside the member's own machine (price data never leaves it), and older copies are never deleted, since without Git DVC's clean-up would remove them; the snapshot is a record, training reads from the database
   - [x] DVC copies each dataset version into the object store (item 3)
-  - [ ] MLflow records it with the run
+  - [x] MLflow records it with the run
 - [x] **6 Replay** (7 for the interval; REQ-DAT-003)
   - [x] `make replay` copies the next day from the member's own database into a database of its own, named after it with `_replay`: prices with their fetch times, splits and dividends, unchanged; the next day is the first stored day after the replay database's latest day; each run copies the replay database's latest day again, so a final quote replaces a provisional one, and copies all or nothing; the replay database's latest day is the simulated today
   - [x] the first run creates the replay database and fills it up to `REPLAY_START` (between the first and the latest stored day); at the latest stored day there is nothing left to replay; `make replay-reset` deletes the replay database, so the next run starts over from `REPLAY_START`; with nothing stored, replay is refused
   - [x] the member's own database is only read; replay makes no EODHD calls
   - [x] the replay interval (`REPLAY_INTERVAL_SECONDS`, within the limits of REQ-DAT-003) sets the schedule of the replay pipeline (item 7)
-- [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001, REQ-DAT-003)
+- [x] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001, REQ-DAT-003)
   - [x] Airflow 3.3.2 in Compose, LocalExecutor, with its own database `airflow` on the project's PostgreSQL server, created when missing, and its own login, which owns only that database; its page on `127.0.0.1:${AIRFLOW_PORT}`, with a login for one admin user, whose password is set in `.env`
   - [x] each task calls a service built from the project image over the Compose network, so Airflow's own image holds none of the project's packages and needs no access to Docker; Airflow receives only the settings its pipelines read, never the EODHD key
   - [x] data service: `POST /load` runs the load and answers with its report, `POST /replay` copies the next day and answers with it (none when nothing is left); reachable only inside Compose
@@ -237,8 +237,8 @@ Each item is one complete piece that fits the interfaces below; it is merged onl
   - [x] replay pipeline: one replayed day every `REPLAY_INTERVAL_SECONDS` seconds
   - [x] both pipelines start paused, the operator unpauses one of them; neither catches up on missed runs, and each runs once at a time
   - [x] both pipelines announce their work: the daily update after each load as the asset `prices`, also after one that found no new trading day; the replay pipeline after each replayed day as the asset `replay-prices`; a skipped or failed run announces nothing
-  - [ ] training pipeline: starts on either `prices` or `replay-prices` (at most one run at a time, no catch-up, starts paused) and calls `POST /training` on the API for each configured security (`airflow-scheduler` depends on `api`, so `make airflow` starts the API too). While the replay database exists, training, `predict/` and the commands read the replay database instead of the member's own and keep replay runs and models under `replay-` names in MLflow (for example `replay-forecast-AAPL.US`); `make replay-reset` deletes the replay database and the `replay-` records in MLflow, returning the system to the member's own database and models
-- [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
+  - [x] training pipeline: starts on either `prices` or `replay-prices` (at most one run at a time, no catch-up, starts paused) and calls `POST /training` on the API for each configured security (`airflow-scheduler` depends on `api`, so `make airflow` starts the API too). While the replay database exists, training, `predict/` and the commands read the replay database instead of the member's own and keep replay runs and models under `replay-` names in MLflow (for example `replay-forecast-AAPL.US`); `make replay-reset` deletes the replay database and the `replay-` records in MLflow, returning the system to the member's own database and models
+- [x] **8 Acceptance tests of phase 2**: written before the code of each item, for REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
 
 Optional, after item 7: API access (REQ-SVC-004), CI building the images (REQ-AUT-004).
 

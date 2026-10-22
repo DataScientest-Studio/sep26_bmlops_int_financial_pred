@@ -73,6 +73,7 @@ def training_endpoint(
     return TrainingResponse(
         symbol=result.symbol,
         model_version=result.model_version,
+        promoted=result.promoted,
         evaluation_days=result.evaluation.days,
         model_mae=result.evaluation.model.mae,
         persistence_mae=result.evaluation.persistence.mae,

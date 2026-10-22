@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from mlflow import MlflowClient
 from sqlalchemy import Engine, make_url, text
 
 from forecasting.api.app import create_app
@@ -60,17 +61,25 @@ def engine(database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def settings(example_settings: Settings, database_url: str, tmp_path: Path) -> Settings:
+def settings(
+    example_settings: Settings, database_url: str, replay_url: str, tmp_path: Path
+) -> Settings:
     """Test settings on this worker's database, test symbols and own folders."""
     dataset_dir = tmp_path / "datasets"
     dataset_dir.mkdir()
+    mlflow_tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+    artifacts = (tmp_path / "artifacts").as_uri()
+    client = MlflowClient(tracking_uri=mlflow_tracking_uri)
+    client.create_experiment("forecasting", artifact_location=artifacts)
+    client.create_experiment("replay-forecasting", artifact_location=artifacts)
 
     return replace(
         example_settings,
         database_url=database_url,
-        model_dir=tmp_path / example_settings.model_dir,
+        replay_database_url=replay_url,
         dataset_dir=dataset_dir,
         dataset_remote=str(tmp_path / "dataset_remote"),
+        mlflow_tracking_uri=mlflow_tracking_uri,
         securities=SECURITIES,
         indices=INDICES,
     )

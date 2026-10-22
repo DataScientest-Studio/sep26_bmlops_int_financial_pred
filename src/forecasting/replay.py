@@ -3,13 +3,16 @@
 from datetime import date
 
 import pandas as pd
+from mlflow import MlflowClient
 from sqlalchemy import Connection, Engine, text
 
-from forecasting.db import connect, create_database, database_exists
+from forecasting.config import Settings
+from forecasting.db import connect, create_database, database_exists, drop_database
 
 TABLES = ["prices", "splits", "dividends"]
 STORED_DAYS = text("SELECT min(day), max(day) FROM prices")
 NEXT_DAY = text("SELECT min(day) FROM prices WHERE day > :today")
+REPLAY_EXPERIMENT_NAME = "replay-forecasting"
 
 
 def replay_next_day(engine: Engine, replay_url: str, replay_start: date) -> date | None:
@@ -80,3 +83,21 @@ def _copy(source: Connection, target: Connection, start: date, until: date) -> d
     _, latest = target.execute(STORED_DAYS).one()
 
     return latest
+
+
+def reset_replay(settings: Settings) -> None:
+    """Delete the replay database and the replay models and runs in MLflow.
+
+    @relation(REQ-DAT-003, scope=function)
+
+    Args:
+        settings: Settings of this deployment.
+    """
+    drop_database(settings.replay_database_url)
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    for model in client.search_registered_models(filter_string="name LIKE 'replay-%'"):
+        client.delete_registered_model(model.name)
+    experiment = client.get_experiment_by_name(REPLAY_EXPERIMENT_NAME)
+    if experiment is not None:
+        for run in client.search_runs([experiment.experiment_id]):
+            client.delete_run(run.info.run_id)

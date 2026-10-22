@@ -37,6 +37,7 @@ class TrainingResponse(BaseModel):
 
     symbol: str
     model_version: str
+    promoted: bool
     evaluation_days: int
     model_mae: float
     persistence_mae: float
