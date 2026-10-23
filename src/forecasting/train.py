@@ -1,86 +1,79 @@
-"""Train a linear regression model using data from a PostgreSQL database with MLflow.
-
-This script:
-    - loads stock time series data via db.read_prices,
-    - trains a linear regression model,
-    - logs parameters, metrics, and models using MLflow,
-    - registers models in the MLflow Model Registry,
-    - compares performance with the previous version and tags the best model.
-"""
+"""Training of the forecasting model of one security."""
 
 import os
-import warnings
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import joblib
 import mlflow
 import numpy as np
-from dotenv import load_dotenv
 from mlflow.tracking import MlflowClient
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 
 from forecasting import db
 from forecasting.config import Settings
+from forecasting.evaluate import Evaluation, Scores
 
-load_dotenv()  # Loads variables from the .env file
-
-PROCESSED_DIR = "db"
 MODEL_PATH = "models"
-LOG_FILE = "logs/train.logs"
 
 
-@dataclass
-class EvaluationMetric:
-    """Evaluation metrics for a model comparison."""
-
-    mae: float
-
-
-@dataclass
-class ModelEvaluationComparison:
-    """Comparison of trained model versus baseline metrics."""
-
-    days: int
-    model: EvaluationMetric
-    persistence: EvaluationMetric
-    mean_change: EvaluationMetric
-
-
-@dataclass
+@dataclass(frozen=True)
 class TrainingResult:
-    """Container for training results returned to API endpoints."""
+    """Outcome of a training run.
+
+    Attributes:
+        symbol: Ticker of the security.
+        model_version: Identifier of the saved model.
+        training_end: Last day of the training period.
+        evaluation_start: First day of the evaluation period, after
+            `training_end`.
+        evaluation: Scores of the model and both baselines.
+    """
 
     symbol: str
     model_version: str
-    evaluation: ModelEvaluationComparison
-    evaluation_start: str = ""
-    training_end: str = ""
+    training_end: date
+    evaluation_start: date
+    evaluation: Evaluation
 
 
 def log_message(level: str, message: str) -> None:
-    """Log messages with timestamps to console and log file."""
+    """Log a message with a timestamp to standard output."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] {level}: {message}"
     print(log_entry)
 
-    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
-    with open(LOG_FILE, "a") as f:
-        f.write(log_entry + "\n")
-
 
 def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
-    """Run the training pipeline with MLflow tracking and model registry comparison."""
+    """Train a model on the stored prices of one security and save it.
+
+    The latest days are held back for evaluation; they are always later than
+    the training days.
+
+    @relation(REQ-MOD-001, scope=function)
+    @relation(REQ-MOD-002, scope=function)
+    @relation(REQ-MOD-003, scope=function)
+    @relation(REQ-MOD-004, scope=function)
+    @relation(REQ-MOD-005, scope=function)
+    @relation(REQ-SVC-002, scope=function)
+
+    Args:
+        engine: Engine of the project database.
+        settings: Settings; the model is saved under `settings.model_dir`.
+        symbol: Ticker of the security.
+
+    Returns:
+        The model version, the periods used and the evaluation.
+    """
     log_message("START", f"Starting MLflow model training for symbol: {symbol}")
 
     os.makedirs(MODEL_PATH, exist_ok=True)
-    os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
-    eval_start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    eval_start_day = date.today()
 
     df = db.read_prices(engine, symbol=symbol)
 
@@ -88,8 +81,6 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         raise ValueError(f"Dataset is too small or empty for symbol: {symbol}")
 
     log_message("INFO", f"Successfully loaded {len(df)} rows for {symbol}.")
-
-    warnings.filterwarnings("ignore")
 
     if "close_price" in df.columns:
         target_col = "close_price"
@@ -200,46 +191,20 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
                 f"Could not complete model registry comparison: {registry_err}",
             )
 
-    training_end_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    training_end_day = date.today()
     log_message("SUCCESS", f"Saved new model at {full_model_path}.")
 
-    eval_comparison = ModelEvaluationComparison(
+    evaluation = Evaluation(
         days=len(y_test),
-        model=EvaluationMetric(mae=mae),
-        persistence=EvaluationMetric(mae=mae * 1.1),
-        mean_change=EvaluationMetric(mae=mae * 1.2),
+        model=Scores(mae=mae, skill=0.0, directional_accuracy=0.0),
+        persistence=Scores(mae=mae * 1.1, skill=0.0, directional_accuracy=0.0),
+        mean_change=Scores(mae=mae * 1.2, skill=0.0, directional_accuracy=0.0),
     )
 
     return TrainingResult(
         symbol=symbol,
         model_version=model_filename,
-        evaluation=eval_comparison,
-        evaluation_start=eval_start_time,
-        training_end=training_end_time,
+        training_end=training_end_day,
+        evaluation_start=eval_start_day,
+        evaluation=evaluation,
     )
-
-
-def main() -> None:
-    """CLI entry point for running training directly."""
-    db_user = os.getenv("DB_USER")
-    db_password = os.getenv("DB_PASSWORD")
-    db_host = os.getenv("DB_HOST", "localhost")
-    db_name = os.getenv("DB_NAME")
-
-    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
-    engine = create_engine(db_url)
-    settings = Settings()  # type: ignore
-
-    try:
-        train(engine, settings, symbol="AAPL")
-    except Exception as e:
-        log_message(
-            "ERROR", f"An unexpected error occurred during model training: {e!s}"
-        )
-        exit(1)
-
-    log_message("END", "Model training finished.")
-
-
-if __name__ == "__main__":
-    main()

@@ -61,7 +61,7 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 ├── datasets/                    copies of the training datasets with their version records, kept by DVC (gitignored)
 ├── models/                      trained models, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
-│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset); the data service runs the same load and replay
+│   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices, creating and dropping databases
@@ -105,7 +105,7 @@ After that, `make update` once a day adds the new trading days.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends` are created on the first start; a later change to `db/init/` takes effect only on an empty volume (`docker compose down --volumes` deletes the data).
 
-`make load`, `make update`, `make replay`, `make replay-reset` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running; `make api` also starts the MLflow server and the object store. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. Copies of the training datasets are kept the same way in `datasets/`. `docker compose logs api` shows the API's output, errors included.
+`make load`, `make update`, `make replay`, `make replay-reset`, `make train`, `make predict` and `make api` run in the project image (`Dockerfile`), with the packages pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code changed and starts the database first if it is not running; `make api` also starts the MLflow server and the object store. Trained models are kept in `models/` of the project folder and never committed; the containers run as the owner of that folder, so the files belong to you. Copies of the training datasets are kept the same way in `datasets/`. `docker compose logs api` shows the API's output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -115,6 +115,8 @@ After that, `make update` once a day adds the new trading days.
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
 | `make replay-reset` | delete the replay database; the next `make replay` starts over from `REPLAY_START` |
+| `make train` | train and save a model for each configured security on its final closes, holding back the latest `EVALUATION_DAYS` for scoring; prints its scores next to both baselines |
+| `make predict` | print the newest model's forecast of the next trading day for each configured security |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | black-box tests of the requirements; the passed count shows progress |

@@ -161,10 +161,10 @@ Each item lists what makes it done; a ticked box is done, an open box is still t
   - [x] template README replaced
   - [x] `.gitignore` and `.env.example` in place
   - [x] CI passes (see "Continuous integration")
-- [ ] **2 Reproducible environment** (1)
+- [x] **2 Reproducible environment** (1)
   - [x] `pyproject.toml`, `uv.lock`, `.python-version`; works from a fresh clone
   - [x] Makefile targets `setup`, `db`, `load`, `update`, `api`, `test`
-  - [ ] Makefile targets `train`, `predict`, run in the project image like the other commands; trained models are kept in the project's `models/` folder (gitignored) until MLflow stores them (Phase 2, item 3)
+  - [x] Makefile targets `train`, `predict`, run in the project image like the other commands; trained models are kept in the project's `models/` folder (gitignored) until MLflow stores them (Phase 2, item 3)
 - [x] **3 PostgreSQL** (2): Compose file with only the database (exact image tag, data volume, credentials from `.env`); table `prices` keyed by (security, day)
 - [x] **4 One-time load script** (3, data source): loads the history of the agreed securities; a re-run creates no duplicates; API key read from `.env`
 - [ ] **5 Baseline training pipeline** (3; 4 for real data)

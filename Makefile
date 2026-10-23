@@ -1,6 +1,6 @@
 .PHONY: setup requirements lint \
         db db-stop db-shell \
-        load update replay replay-reset \
+        load update replay replay-reset train predict \
         test acceptance contract \
         api api-stop \
         mlflow mlflow-stop \
@@ -59,6 +59,17 @@ replay:
 # Deletes the replay database; the next replay starts over from REPLAY_START.
 replay-reset:
 	$(COMMAND_ENV) replay-reset
+
+# Trains a model for each configured security on its final closes, holding back the
+# latest EVALUATION_DAYS for scoring; saves it under models/<symbol>/ and prints its
+# scores next to both baselines.
+train:
+	$(COMMAND_ENV) train
+
+# Prints the newest model's forecast of the next trading day for each configured
+# security.
+predict:
+	$(COMMAND_ENV) predict
 
 # Tests see only the settings of .env.example: the shell's own variables are cleared,
 # apart from PATH and HOME, which uv needs.

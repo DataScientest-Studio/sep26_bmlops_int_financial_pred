@@ -1,54 +1,66 @@
-"""Predict using a linear regression model using data from a PostgreSQL database.
-
-This script:
-  - loads latest model,
-  - returns prediction for data using latest model,
-  - the data is provided here in the file as EXAMPLE.
-
-TO DO (see parts with '?'):
-  - add the right paths in the beginning,
-  - create .env file for user name etc. or add github secrets,
-  - change data source (user gives data as input or loaded from
-  somewhere with choices?).
-"""
+"""Forecast of the next trading day's change of one security."""
 
 import glob
 import os
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import joblib
-from dotenv import load_dotenv
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine
 
 from forecasting import db
 from forecasting.config import Settings
 
-load_dotenv()  # Loads variables from the .env file
-
-LOG_FILE = "logs/predict.logs"
 MODEL_PATH = "models"
 
 
-@dataclass
-class ForecastResult:
-    """Container for prediction results returned to API endpoints."""
+@dataclass(frozen=True)
+class Forecast:
+    """A forecast for one security.
+
+    @relation(REQ-SVC-001, scope=class)
+
+    Attributes:
+        symbol: Ticker of the security.
+        day: The trading day the forecast is for.
+        change: Predicted relative close-to-close change to `day`.
+        model_version: Identifier of the model that produced it.
+        start_close: The stored close the change starts from: the latest day's close,
+            which may still be provisional.
+        start_fetched_at: When that close was fetched; it is final if fetched at or
+            after its exchange's close that day plus the set delay.
+    """
 
     symbol: str
-    prediction: float
-    date: str
+    day: date
+    change: float
     model_version: str
+    start_close: float
+    start_fetched_at: datetime
 
 
 def log_message(level: str, message: str) -> None:
-    """Log messages with timestamps to console and log file."""
+    """Log a message with a timestamp to standard output."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_entry = f"[{timestamp}] {level}: {message}"
     print(log_entry)
 
 
-def predict(engine: Engine, settings: Settings, symbol: str) -> ForecastResult:
-    """Run the prediction pipeline for a specific security symbol."""
+def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
+    """Forecast the change from the latest stored day to the next trading day.
+
+    @relation(REQ-MOD-001, scope=function)
+    @relation(REQ-SVC-001, scope=function)
+
+    Args:
+        engine: Engine of the project database.
+        settings: Settings; the model is read from `settings.model_dir`.
+        symbol: Ticker of the security.
+
+    Returns:
+        The forecast with the version of the model that produced it, and the close it
+        starts from with the time that close was fetched.
+    """
     log_message("START", f"Starting prediction execution for symbol: {symbol}")
 
     model_files = glob.glob(os.path.join(MODEL_PATH, "linear_regression_model_*.pkl"))
@@ -62,7 +74,6 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> ForecastResult:
 
     model = joblib.load(latest_model_path)
 
-    # Fixed: db.read_prices only takes engine and symbol
     df = db.read_prices(engine, symbol=symbol)
 
     if df.empty:
@@ -82,37 +93,16 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> ForecastResult:
     predictions = model.predict(X)
 
     latest_pred = float(predictions[-1])
-    latest_date = str(df["date"].iloc[-1])
+    latest_date = date.fromisoformat(str(df["date"].iloc[-1]))
     model_version = os.path.basename(latest_model_path)
 
     log_message("END", "Prediction finished successfully.")
 
-    return ForecastResult(
+    return Forecast(
         symbol=symbol,
-        prediction=latest_pred,
-        date=latest_date,
+        day=latest_date,
+        change=latest_pred,
         model_version=model_version,
+        start_close=float(df[target_col].iloc[-1]),
+        start_fetched_at=datetime.now(),
     )
-
-
-def main() -> None:
-    """CLI entry point for running predictions directly."""
-    db_user = os.getenv("DB_USER")
-    db_password = os.getenv("DB_PASSWORD")
-    db_host = os.getenv("DB_HOST", "localhost")
-    db_name = os.getenv("DB_NAME")
-
-    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"
-    engine = create_engine(db_url)
-    settings = Settings()  # type: ignore
-
-    try:
-        result = predict(engine, settings, symbol="AAPL")
-        log_message("PREDICTIONS", f"{result}")
-    except Exception as e:
-        log_message("ERROR", f"An unexpected error occurred during prediction: {e!s}")
-        exit(1)
-
-
-if __name__ == "__main__":
-    main()

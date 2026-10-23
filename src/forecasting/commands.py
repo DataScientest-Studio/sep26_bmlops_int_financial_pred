@@ -11,7 +11,9 @@ from forecasting.config import load_settings
 from forecasting.db import connect, drop_database
 from forecasting.eodhd import EodhdSource
 from forecasting.load import LoadReport, load_history
+from forecasting.predict import predict
 from forecasting.replay import replay_next_day
+from forecasting.train import train
 
 
 def run_load() -> LoadReport:
@@ -91,7 +93,52 @@ def replay_reset() -> None:
     drop_database(load_settings().replay_database_url)
 
 
-COMMANDS = {"load": load, "replay": replay, "replay-reset": replay_reset}
+def train_models() -> None:
+    """Train and save a model for each configured security and print its scores.
+
+    @relation(REQ-MOD-001, scope=function)
+    @relation(REQ-MOD-002, scope=function)
+    """
+    settings = load_settings()
+    engine = connect(settings.database_url)
+    for security in settings.securities:
+        result = train(engine, settings, security.symbol)
+        scores = result.evaluation
+        # Adjacent f-strings are joined without a space, so each continuation starts
+        # with one. :.3% multiplies by 100 and adds %, so 0.01053 prints as 1.053%.
+        print(
+            f"{result.symbol}: model {result.model_version}, MAE"
+            f" {scores.model.mae:.3%} (persistence {scores.persistence.mae:.3%},"
+            f" mean change {scores.mean_change.mae:.3%}),"
+            f" skill {scores.model.skill:+.3f}"
+        )
+    engine.dispose()
+
+
+def predict_changes() -> None:
+    """Print the forecast of the next trading day for each configured security.
+
+    @relation(REQ-MOD-001, scope=function)
+    """
+    settings = load_settings()
+    engine = connect(settings.database_url)
+    for security in settings.securities:
+        forecast = predict(engine, settings, security.symbol)
+        # The + in :+.3% always shows the sign, as a move can go either way.
+        print(
+            f"{forecast.symbol} {forecast.day}: {forecast.change:+.3%} from close"
+            f" {forecast.start_close:.2f} (model {forecast.model_version})"
+        )
+    engine.dispose()
+
+
+COMMANDS = {
+    "load": load,
+    "replay": replay,
+    "replay-reset": replay_reset,
+    "train": train_models,
+    "predict": predict_changes,
+}
 
 
 def main() -> None:
