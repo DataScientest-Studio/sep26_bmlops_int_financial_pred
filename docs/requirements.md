@@ -238,7 +238,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2, optional \
 **VERIFICATION**: Inspection
 
-**Statement**: Every push runs linting and unit tests and builds the service images; a push to the main branch also publishes the images.
+**Statement**: Every push runs linting, type checks and unit tests; a scheduled check builds the project image and runs the acceptance tests.
 
 ### Commands from any folder
 
