@@ -1,0 +1,23 @@
+artifact_path: /home/ubuntu/sep26_bmlops_int_financial_pred/mlruns/1/models/m-827ecb8057ab474bb8e51656049e003a/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.12.16
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.1
+    skops_trusted_types: null
+mlflow_version: 3.17.2
+model_id: m-827ecb8057ab474bb8e51656049e003a
+model_size_bytes: 5722
+model_uuid: m-827ecb8057ab474bb8e51656049e003a
+prompts: null
+run_id: 2555c4a4a58644b69a16f9b2b00fd03d
+utc_time_created: '2026-10-28 15:40:54.638469'

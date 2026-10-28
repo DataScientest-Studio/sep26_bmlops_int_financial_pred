@@ -3,6 +3,7 @@
 import os
 from dataclasses import dataclass
 from datetime import date, datetime
+import pandas as pd
 
 import joblib
 import mlflow
@@ -16,7 +17,7 @@ from sqlalchemy import Engine
 
 from forecasting import db
 from forecasting.config import Settings
-from forecasting.evaluate import Evaluation, Scores
+from forecasting.evaluate import Evaluation, Scores, evaluate
 
 MODEL_PATH = "models"
 
@@ -73,27 +74,37 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
 
     os.makedirs(MODEL_PATH, exist_ok=True)
 
-    eval_start_day = date.today()
+    #eval_start_day = date.today()
 
     df = db.read_prices(engine, symbol=symbol)
+    # Sort oldest to newest so training is in the past and test is in the future
+    # Convert day to datetime and sort strictly oldest to newest
+    # 1. Convert to datetime, sort oldest to newest, and reset index
+    df["day"] = pd.to_datetime(df["day"])
+    df = df.sort_values("day", ascending=True).reset_index(drop=True)
 
     if df.empty or len(df) < 5:
         raise ValueError(f"Dataset is too small or empty for symbol: {symbol}")
 
-    log_message("INFO", f"Successfully loaded {len(df)} rows for {symbol}.")
+    df["return"] = df["close"].pct_change()
+    df = df.dropna().reset_index(drop=True)
 
-    if "close" in df.columns:
-        target_col = "close"
-    else:
-        target_col = df.columns[-1]
-
-    # Example fix: Drop date/time or non-numeric columns from features
-    X = df.drop(["day", target_col], axis=1, errors="ignore")
+    target_col = "return"
+    X = df.drop(["day", "close", target_col], axis=1, errors="ignore")
     y = df[[target_col]]
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
+    
+    # 2. Slice using the exact train/test split lengths on the clean df
+    train_df = df.iloc[:len(X_train)]
+    test_df = df.iloc[len(X_train):]
+    
+    training_end_day = pd.to_datetime(train_df["day"].iloc[-1]).date()
+    eval_start_day = pd.to_datetime(test_df["day"].iloc[0]).date()
+    ##############
+
     X_train = X_train.select_dtypes(include=["number"])
     X_test = X_test.select_dtypes(include=["number"])
     sc = StandardScaler()
@@ -110,6 +121,13 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         model = LinearRegression()
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
+
+        # Call the evaluate function implemented in evaluate.py
+        evaluation = evaluate(
+            actual=y_test.iloc[:, 0], 
+            predicted=y_pred, 
+            training_target=y_train.iloc[:, 0]
+        )
 
         mse = mean_squared_error(y_test, y_pred)
         rmse = float(np.sqrt(mse))
@@ -128,17 +146,21 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         model_filename = f"linear_regression_model_{symbol}_{timestamp_str}.pkl"
         full_model_path = os.path.join(MODEL_PATH, model_filename)
-        joblib.dump(model, full_model_path)
-
-        # Log artifact and register model using core mlflow functions
-        mlflow.log_artifact(full_model_path, artifact_path="model")
+        joblib.dump((model, sc), full_model_path)
+        # Save both the model and the fitted scaler as a tuple
+        
+    # Log the model using MLflow's sklearn model logger 
+    # (which creates the required model structure)
+        model_info = mlflow.sklearn.log_model(
+            sk_model=model, 
+            artifact_path="model"
+        )
 
         model_name = f"stock_predictor_{symbol.lower()}"
-        run_id = run.info.run_id
-        model_uri = f"runs:/{run_id}/model/{model_filename}"
-        registered_model = mlflow.register_model(model_uri, model_name)
+        
+        # Use model_info.model_uri directly instead of constructing a manual string
+        registered_model = mlflow.register_model(model_info.model_uri, model_name)
         current_version_str = str(registered_model.version)
-
         client = MlflowClient()
         try:
             versions = client.search_model_versions(f"name='{model_name}'")
