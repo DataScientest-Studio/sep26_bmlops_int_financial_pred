@@ -79,21 +79,20 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
     if df.empty:
         raise ValueError(f"No data found in the database for symbol: {symbol}")
 
-    if "close_price" in df.columns:
-        target_col = "close_price"
-    elif "close price" in df.columns:
-        target_col = "close price"
+    if "close" in df.columns:
+        target_col = "close"
     else:
         target_col = df.columns[-1]
 
-    X = df.drop(["date", target_col], axis=1, errors="ignore")
+    X = df.drop(["day", target_col], axis=1, errors="ignore")
+    X = X.select_dtypes(include=["number"])
     if X.empty:
         X = df[[target_col]]
 
     predictions = model.predict(X)
 
     latest_pred = float(predictions[-1])
-    latest_date = date.fromisoformat(str(df["date"].iloc[-1]))
+    latest_date = date.fromisoformat(str(df["day"].iloc[-1]))
     model_version = os.path.basename(latest_model_path)
 
     log_message("END", "Prediction finished successfully.")

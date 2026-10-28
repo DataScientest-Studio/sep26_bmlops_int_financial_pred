@@ -82,19 +82,20 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
 
     log_message("INFO", f"Successfully loaded {len(df)} rows for {symbol}.")
 
-    if "close_price" in df.columns:
-        target_col = "close_price"
-    elif "close price" in df.columns:
-        target_col = "close price"
+    if "close" in df.columns:
+        target_col = "close"
     else:
         target_col = df.columns[-1]
 
-    X = df.drop(["date", target_col], axis=1, errors="ignore")
+    # Example fix: Drop date/time or non-numeric columns from features
+    X = df.drop(["day", target_col], axis=1, errors="ignore")
     y = df[[target_col]]
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
+    X_train = X_train.select_dtypes(include=["number"])
+    X_test = X_test.select_dtypes(include=["number"])
     sc = StandardScaler()
     X_train = sc.fit_transform(X_train)
     X_test = sc.transform(X_test)
