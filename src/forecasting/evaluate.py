@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
 
 
@@ -53,4 +54,47 @@ def evaluate(
     Returns:
         The scores of the model, persistence and the mean change.
     """
-    raise NotImplementedError
+    actual_arr = np.asarray(actual).flatten()
+    pred_arr = np.asarray(predicted).flatten()
+    train_arr = np.asarray(training_target).flatten()
+
+    # Baselines
+    persistence_arr = np.zeros_like(actual_arr)
+    mean_val = float(np.mean(train_arr)) if len(train_arr) > 0 else 0.0
+    mean_change_arr = np.full_like(actual_arr, mean_val)
+
+    def compute_scores(pred, persistence_mae_ref=None):
+        mae = float(np.mean(np.abs(actual_arr - pred)))
+
+        # Directional accuracy: share of days with correct sign match
+        dir_acc = float(np.mean(np.sign(actual_arr) == np.sign(pred)))
+
+        if persistence_mae_ref is None:
+            skill = 0.0
+        else:
+            if persistence_mae_ref == 0:
+                skill = 0.0
+            else:
+                skill = float(1.0 - (mae / persistence_mae_ref))
+        return mae, skill, dir_acc
+
+    # 1. Persistence scores
+    p_mae, _, p_dir = compute_scores(persistence_arr)
+    p_skill = 0.0  # persistence skill relative to itself is 0
+
+    # 2. Model scores (using persistence MAE as reference for skill)
+    m_mae, m_skill, m_dir = compute_scores(pred_arr, persistence_mae_ref=p_mae)
+
+    # 3. Mean change scores
+    mc_mae, mc_skill, mc_dir = compute_scores(
+        mean_change_arr, persistence_mae_ref=p_mae
+    )
+
+    days = len(actual_arr)
+
+    return Evaluation(
+        model=Scores(mae=m_mae, skill=m_skill, directional_accuracy=m_dir),
+        persistence=Scores(mae=p_mae, skill=p_skill, directional_accuracy=p_dir),
+        mean_change=Scores(mae=mc_mae, skill=mc_skill, directional_accuracy=mc_dir),
+        days=days,
+    )
