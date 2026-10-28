@@ -1,11 +1,12 @@
 """Forecast of the next trading day's change of one security."""
-import pandas as pd
+
 import glob
 import os
 from dataclasses import dataclass
 from datetime import date, datetime
 
 import joblib
+import pandas as pd
 from sqlalchemy import Engine
 
 from forecasting import db
@@ -63,9 +64,9 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
     """
     log_message("START", f"Starting prediction execution for symbol: {symbol}")
 
-    
-
-    model_files = glob.glob(os.path.join(MODEL_PATH, f"linear_regression_model_{symbol.upper()}_*.pkl"))
+    model_files = glob.glob(
+        os.path.join(MODEL_PATH, f"linear_regression_model_{symbol.upper()}_*.pkl")
+    )
     if not model_files:
         raise FileNotFoundError(
             f"No trained model files found in {MODEL_PATH} directory"
@@ -78,14 +79,10 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
     model, sc = joblib.load(latest_model_path)
 
     df = db.read_prices(engine, symbol=symbol)
-
+    df = pd.DataFrame(df)
     if df.empty:
         raise ValueError(f"No data found in the database for symbol: {symbol}")
 
-    # Handle New Year's Day holiday edge case
-    if next_trading_day.month == 1 and next_trading_day.day == 1:
-        next_trading_day = (pd.Timestamp(next_trading_day) + pd.Timedelta(days=1)).date()
-        
     # CHANGED TARGET VARIABLE
     df["return"] = df["close"].pct_change()
     df = df.dropna()
@@ -112,9 +109,11 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
 
     # Handle New Year's Day holiday edge case
     if next_trading_day.month == 1 and next_trading_day.day == 1:
-        next_trading_day = (pd.Timestamp(next_trading_day) + pd.Timedelta(days=1)).date()
-        
-    latest_date = date.fromisoformat(str(df["day"].iloc[-1]))
+        next_trading_day = (
+            pd.Timestamp(next_trading_day) + pd.Timedelta(days=1)
+        ).date()
+
+    # latest_date = date.fromisoformat(str(df["day"].iloc[-1]))
     model_version = os.path.basename(latest_model_path)
 
     log_message("END", "Prediction finished successfully.")
@@ -124,6 +123,6 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
         day=next_trading_day,
         change=latest_pred,
         model_version=model_version,
-        start_close=float(df['close'].iloc[-1]),
+        start_close=float(df["close"].iloc[-1]),
         start_fetched_at=datetime.now(),
     )

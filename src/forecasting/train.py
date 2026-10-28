@@ -3,11 +3,12 @@
 import os
 from dataclasses import dataclass
 from datetime import date, datetime
-import pandas as pd
 
 import joblib
 import mlflow
+import mlflow.sklearn
 import numpy as np
+import pandas as pd
 from mlflow.tracking import MlflowClient
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -74,9 +75,10 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
 
     os.makedirs(MODEL_PATH, exist_ok=True)
 
-    #eval_start_day = date.today()
+    # eval_start_day = date.today()
 
     df = db.read_prices(engine, symbol=symbol)
+    df = pd.DataFrame(df)
     # Sort oldest to newest so training is in the past and test is in the future
     # Convert day to datetime and sort strictly oldest to newest
     # 1. Convert to datetime, sort oldest to newest, and reset index
@@ -91,22 +93,20 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
 
     target_col = "return"
     X = df.drop(["day", "close", target_col], axis=1, errors="ignore")
+    X = X.select_dtypes(include=["number"])
     y = df[[target_col]]
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, shuffle=False
     )
-    
+
     # 2. Slice using the exact train/test split lengths on the clean df
-    train_df = df.iloc[:len(X_train)]
-    test_df = df.iloc[len(X_train):]
-    
+    train_df = df.iloc[: len(X_train)]
+    test_df = df.iloc[len(X_train) :]
+
     training_end_day = pd.to_datetime(train_df["day"].iloc[-1]).date()
     eval_start_day = pd.to_datetime(test_df["day"].iloc[0]).date()
     ##############
-
-    X_train = X_train.select_dtypes(include=["number"])
-    X_test = X_test.select_dtypes(include=["number"])
     sc = StandardScaler()
     X_train = sc.fit_transform(X_train)
     X_test = sc.transform(X_test)
@@ -123,10 +123,15 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         y_pred = model.predict(X_test)
 
         # Call the evaluate function implemented in evaluate.py
+        # If y_train / y_test are 2D arrays or lists, flatten and convert to Series:
+        # (Assuming they are single-column targets)
+        y_train_series = pd.Series(np.array(y_train).squeeze())
+        y_test_series = pd.Series(np.array(y_test).squeeze())
+
         evaluation = evaluate(
-            actual=y_test.iloc[:, 0], 
-            predicted=y_pred, 
-            training_target=y_train.iloc[:, 0]
+            actual=y_test_series,
+            predicted=y_pred,
+            training_target=y_train_series,
         )
 
         mse = mean_squared_error(y_test, y_pred)
@@ -148,16 +153,13 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         full_model_path = os.path.join(MODEL_PATH, model_filename)
         joblib.dump((model, sc), full_model_path)
         # Save both the model and the fitted scaler as a tuple
-        
-    # Log the model using MLflow's sklearn model logger 
-    # (which creates the required model structure)
-        model_info = mlflow.sklearn.log_model(
-            sk_model=model, 
-            artifact_path="model"
-        )
+
+        # Log the model using MLflow's sklearn model logger
+        # (which creates the required model structure)
+        model_info = mlflow.sklearn.log_model(sk_model=model, artifact_path="model")  # type: ignore[reportAttributeAccessIssue]
 
         model_name = f"stock_predictor_{symbol.lower()}"
-        
+
         # Use model_info.model_uri directly instead of constructing a manual string
         registered_model = mlflow.register_model(model_info.model_uri, model_name)
         current_version_str = str(registered_model.version)

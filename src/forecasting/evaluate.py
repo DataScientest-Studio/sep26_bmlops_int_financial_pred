@@ -1,6 +1,7 @@
 """Scoring of a model against the baselines."""
 
 from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
@@ -64,10 +65,10 @@ def evaluate(
 
     def compute_scores(pred, persistence_mae_ref=None):
         mae = float(np.mean(np.abs(actual_arr - pred)))
-        
+
         # Directional accuracy: share of days with correct sign match
         dir_acc = float(np.mean(np.sign(actual_arr) == np.sign(pred)))
-        
+
         if persistence_mae_ref is None:
             skill = 0.0
         else:
@@ -85,7 +86,9 @@ def evaluate(
     m_mae, m_skill, m_dir = compute_scores(pred_arr, persistence_mae_ref=p_mae)
 
     # 3. Mean change scores
-    mc_mae, mc_skill, mc_dir = compute_scores(mean_change_arr, persistence_mae_ref=p_mae)
+    mc_mae, mc_skill, mc_dir = compute_scores(
+        mean_change_arr, persistence_mae_ref=p_mae
+    )
 
     days = len(actual_arr)
 
