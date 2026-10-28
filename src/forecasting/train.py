@@ -216,7 +216,6 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
                 f"Could not complete model registry comparison: {registry_err}",
             )
 
-    training_end_day = date.today()
     log_message("SUCCESS", f"Saved new model at {full_model_path}.")
 
     evaluation = Evaluation(

@@ -124,5 +124,5 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
         change=latest_pred,
         model_version=model_version,
         start_close=float(df["close"].iloc[-1]),
-        start_fetched_at=datetime.now(),
+        start_fetched_at=pd.to_datetime(df["fetched_at"].iloc[-1]),
     )
