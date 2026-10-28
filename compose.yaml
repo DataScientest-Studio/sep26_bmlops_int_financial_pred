@@ -79,6 +79,13 @@ services:
     <<: *project
     profiles: [commands]
     entrypoint: [run-as-owner, python, -m, forecasting.commands]
+    depends_on:
+      db:
+        condition: service_healthy
+      object-store:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
 
   api:
     <<: *project

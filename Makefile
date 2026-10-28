@@ -41,8 +41,8 @@ db-shell:
 	docker compose exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
 
 # Runs a project command in the project image, rebuilt when the code changed; starts the
-# database first if it is not running. The models and datasets folders are created
-# first if missing.
+# database, the object store and the MLflow server first if they are not running. The
+# models and datasets folders are created first if missing.
 COMMAND_ENV = mkdir -p models datasets && docker compose run --rm --build commands
 
 # Loads prices, splits and dividends from EODHD with the key in .env: a security without
