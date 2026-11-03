@@ -38,11 +38,31 @@ SAVE_DIVIDEND = text(
     """
 )
 
+SAVE_LOAD = text(
+    """
+    INSERT INTO loads (symbol, fetched_at) VALUES (:symbol, :fetched_at)
+    ON CONFLICT (symbol) DO UPDATE SET fetched_at = EXCLUDED.fetched_at
+    """
+)
+
+
+@dataclass(frozen=True)
+class Delivery:
+    """What a data source delivers for one security.
+
+    Attributes:
+        fetched_at: Time of the fetch, timezone-aware; set also when no quote came.
+        quotes: One row per day, as `PriceSource.fetch_history` describes.
+    """
+
+    fetched_at: datetime
+    quotes: pd.DataFrame
+
 
 class PriceSource(Protocol):
     """A data source of daily prices, splits and dividends."""
 
-    def fetch_history(self, symbol: str, start: date) -> pd.DataFrame:
+    def fetch_history(self, symbol: str, start: date) -> Delivery:
         """Fetch the daily price history of one security from a first day on.
 
         Args:
@@ -50,10 +70,10 @@ class PriceSource(Protocol):
             start: First day to deliver; the source may hold no earlier days anyway.
 
         Returns:
-            One row per day with the columns in `forecasting.db.PRICE_COLUMNS`, as
-            delivered: rows may be invalid. `day` holds plain `datetime.date` values,
-            never a `datetime` or `pandas.Timestamp`; `fetched_at` holds the time of
-            the fetch, timezone-aware.
+            The time of the fetch and the quotes: one row per day with the columns in
+            `forecasting.db.PRICE_COLUMNS`, as delivered, so rows may be invalid.
+            `day` holds plain `datetime.date` values, never a `datetime` or
+            `pandas.Timestamp`; `fetched_at` holds the time of the fetch on every row.
         """
         ...
 
@@ -282,6 +302,9 @@ def load_history(
     Trading days without a delivered quote are counted as missing; they do not stop the
     load.
 
+    Each security's fetch time is recorded, also when nothing new was stored, so the
+    freshness of its prices is measured at its latest load.
+
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-002, scope=function)
     @relation(REQ-DAT-004, scope=function)
@@ -307,23 +330,27 @@ def load_history(
     with engine.begin() as connection:
         splits = {s.symbol: source.fetch_splits(s.symbol) for s in securities}
         dividends = {s.symbol: source.fetch_dividends(s.symbol) for s in securities}
-        for symbol, delivery in splits.items():
-            valid = _valid_rows(delivery, SPLIT_COLUMNS, ["ratio"])
-            rejected += len(delivery) - len(valid)
+        for symbol, events in splits.items():
+            valid = _valid_rows(events, SPLIT_COLUMNS, ["ratio"])
+            rejected += len(events) - len(valid)
             valid_splits[symbol] = valid
             _save_events(connection, SAVE_SPLIT, symbol, valid)
-        for symbol, delivery in dividends.items():
-            valid = _valid_rows(delivery, DIVIDEND_COLUMNS, ["amount"])
-            rejected += len(delivery) - len(valid)
+        for symbol, events in dividends.items():
+            valid = _valid_rows(events, DIVIDEND_COLUMNS, ["amount"])
+            rejected += len(events) - len(valid)
             _save_events(connection, SAVE_DIVIDEND, symbol, valid)
         for security in (*securities, *indices):
             fetched = _stored_fetch_times(connection, security.symbol)
             start = max(fetched, default=history_start)
             delivery = source.fetch_history(security.symbol, start)
-            valid = _valid_quotes(delivery, security.exchange)
-            rejected += len(delivery) - len(valid)
+            # Record every fetch, also one with nothing new; a failed load undoes it:
+            load = {"symbol": security.symbol, "fetched_at": delivery.fetched_at}
+            connection.execute(SAVE_LOAD, load)
+            quotes = delivery.quotes
+            valid = _valid_quotes(quotes, security.exchange)
+            rejected += len(quotes) - len(valid)
             # A row without a day belongs to no day; it is only rejected:
-            delivered = set(delivery["day"].dropna())
+            delivered = set(quotes["day"].dropna())
             missing += _missing_days(delivered, security.exchange)
             # Store volumes as traded, so a later split never makes a stored quote
             # wrong; indices have no splits and keep their volumes:

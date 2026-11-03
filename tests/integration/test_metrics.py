@@ -1,11 +1,15 @@
 """Integration tests of the numbers the API reports at `/metrics`."""
 
+from datetime import datetime
+
 import pytest
 from prometheus_client.parser import text_string_to_metric_families
-from sqlalchemy import make_url
+from sqlalchemy import make_url, text
 
 from forecasting.api.dependencies import get_engine
 from forecasting.db import connect
+from forecasting.load import load_history
+from tests.fakes import INDICES, SECURITIES, standard_source
 
 pytestmark = pytest.mark.integration
 
@@ -42,4 +46,54 @@ def test_metrics_without_database_keep_the_request_count(client, settings):
     assert response.status_code == 200
     counted = _values_by_label(response.text, "http_requests_total", "handler")
     assert counted == {"/predict": 1.0}
+    assert _values_by_label(response.text, "trading_days_behind", "symbol") == {}
+
+
+def test_metrics_measure_trading_days_behind_at_the_latest_load(
+    client, engine, settings
+):
+    """Trading days behind count at the latest load, also one storing nothing."""
+    source = standard_source()
+    load_history(
+        engine,
+        source,
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
+    source.fetched_at = datetime.fromisoformat("2026-01-02T22:00:00+00:00")
+    load_history(
+        engine,
+        source,
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert _values_by_label(response.text, "trading_days_behind", "symbol") == {
+        "TEST.US": 1.0,
+        "TEST.DE": 1.0,
+        "TEST.INDX": 1.0,
+    }
+
+
+def test_metrics_without_a_recorded_load_report_no_trading_days_behind(
+    client, engine, settings
+):
+    """A security without a recorded load gets no number of trading days behind."""
+    load_history(
+        engine,
+        standard_source(),
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
+    with engine.begin() as connection:
+        connection.execute(text("TRUNCATE loads"))
+    response = client.get("/metrics")
+    assert response.status_code == 200
     assert _values_by_label(response.text, "trading_days_behind", "symbol") == {}

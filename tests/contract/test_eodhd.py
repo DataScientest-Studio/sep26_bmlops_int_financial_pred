@@ -87,7 +87,7 @@ def apple_history(api_key: SecretStr, source: EodhdSource) -> pd.DataFrame:
     # Apple's history and splits cost two calls:
     _require_calls(api_key, 2)
 
-    return source.fetch_history(APPLE, CALENDAR_START)
+    return source.fetch_history(APPLE, CALENDAR_START).quotes
 
 
 def test_history_has_the_price_columns(apple_history):
@@ -147,7 +147,7 @@ def test_an_announced_split_is_listed_before_any_volume_holds_it(api_key, source
             break
     else:
         pytest.skip(f"no US split of ratio 3 or more, or 1/3 or less, for {split_day}")
-    recent = source.fetch_history(symbol, date.today() - timedelta(days=14))
+    recent = source.fetch_history(symbol, date.today() - timedelta(days=14)).quotes
     latest = recent["volume"].iloc[-1]
     live = _get(api_key, f"real-time/{symbol}")["volume"]
     assert 0.5 <= latest / live <= 2

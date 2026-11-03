@@ -491,8 +491,8 @@ in brackets.
 - [ ] **6 Alerts** (REQ-MON-004, REQ-MON-005)
   - [x] Grafana raises an alert when the API's error rate crosses its configured
     threshold (2; REQ-MON-004)
-  - [ ] Grafana raises an alert when a security misses a trading day that was final when
-    the latest load ran, or when the daily update is missed (2; REQ-MON-004)
+  - [ ] Grafana raises an alert when a security is behind by a trading day that was
+    final when the latest load ran, or when the daily update is missed (2; REQ-MON-004)
   - [ ] an alert configured to start training calls a webhook that starts the training
     pipeline (1; REQ-MON-005)
 - [ ] **7 Demo app** (1; REQ-APP-001, REQ-APP-002, REQ-APP-003): the forecast view, the

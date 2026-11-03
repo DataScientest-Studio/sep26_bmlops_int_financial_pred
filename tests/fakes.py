@@ -7,6 +7,7 @@ import pandas as pd
 
 from forecasting.config import Security
 from forecasting.db import DIVIDEND_COLUMNS, SPLIT_COLUMNS
+from forecasting.load import Delivery
 from forecasting.trading_calendar import trading_days
 
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
@@ -66,7 +67,7 @@ class FakeSource:
         self.dividends = dividends or {}
         self.starts: dict[str, date] = {}
 
-    def fetch_history(self, symbol: str, start: date) -> pd.DataFrame:
+    def fetch_history(self, symbol: str, start: date) -> Delivery:
         """Deliver the prepared history of one security from `start` on.
 
         Each call records its start in `starts`, so tests see what was asked for.
@@ -76,14 +77,15 @@ class FakeSource:
             start: First day to deliver.
 
         Returns:
-            A copy of the prepared days from `start` on, each stamped with `fetched_at`.
+            `fetched_at` and a copy of the prepared days from `start` on, each stamped
+            with `fetched_at`.
         """
         self.starts[symbol] = start
         history = self.histories[symbol]
         delivered = history[history["day"] >= start].copy()
         delivered["fetched_at"] = self.fetched_at
 
-        return delivered
+        return Delivery(self.fetched_at, delivered)
 
     def fetch_splits(self, symbol: str) -> pd.DataFrame:
         """Deliver the prepared splits of one security.

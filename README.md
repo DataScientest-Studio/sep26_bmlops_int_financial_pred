@@ -40,9 +40,10 @@ yet.
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
 │   ├── init/
-│   │   ├── dividends.sql        creates the dividends table on the database's first start
-│   │   ├── prices.sql           creates the prices table on the database's first start
-│   │   └── splits.sql           creates the splits table on the database's first start
+│   │   ├── dividends.sql        creates the dividends table where it is missing
+│   │   ├── loads.sql            creates the loads table: each security's latest fetch time
+│   │   ├── prices.sql           creates the prices table where it is missing
+│   │   └── splits.sql           creates the splits table where it is missing
 │   ├── queries/
 │   │   ├── examples.sql         example queries on the prices table
 │   │   ├── sample-data.sql      made-up prices for trying them
@@ -65,7 +66,7 @@ yet.
 │   │   └── api.json             the dashboard "API" (Grafana reads it at start)
 │   └── provisioning/
 │       ├── alerting/
-│       │   └── alerts.yaml      the alert rule "API error rate"
+│       │   └── alerts.yaml      the alert rules "API error rate" and "Data not fresh"
 │       ├── dashboards/          where Grafana finds the dashboards
 │       └── datasources/         Grafana's data source (Prometheus)
 ├── prometheus/
@@ -128,9 +129,12 @@ first command or API request that reads the settings.
 `.venv/` with the packages pinned in `uv.lock`; tests and checks run from it.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives
-in a Docker volume and survives restarts. The tables `prices`, `splits` and `dividends`
-are created on the first start; a later change to `db/init/` takes effect only on an
-empty volume (`docker compose down --volumes` deletes the data).
+in a Docker volume and survives restarts. The tables `prices`, `splits`, `dividends` and
+`loads` are created on the first start. The Compose service `db-tables` runs the scripts
+in `db/init/` again at each start of the services; they only create the tables a
+database lacks, so an existing database gains a table added to `db/init/` without a
+reload. A change to a table that exists takes effect only on an empty volume
+(`docker compose down --volumes` deletes the data).
 
 `make load`, `make update`, `make replay`, `make replay-reset`, `make train`,
 `make predict` and `make api` run in the project image (`Dockerfile`), with the packages
@@ -284,10 +288,13 @@ as `admin` with the password `GRAFANA_ADMIN_PASSWORD` from `.env`.
 The API lists its numbers at `/metrics`: per route, how many requests came, how long
 they took and which status group (2xx, 4xx, 5xx) they got. The health check and
 `/metrics` itself are not counted. It also lists `trading_days_behind` per security: the
-number of trading days after the latest stored day whose final price is available; 0
-means none has passed. Prometheus collects the list regularly (see
-[Monitoring settings](#monitoring-settings)). No port is published for it on the host;
-its data lives in a Docker volume (`prometheus-data`) and survives restarts.
+number of trading days after the latest stored day that were final when the security's
+latest load ran; 0 means no trading day is behind. A security without a stored day or
+without a recorded load has no number. Every load records per security when it fetched
+it, also when it stored nothing, in the table `loads`. Prometheus collects the list
+regularly (see [Monitoring settings](#monitoring-settings)). No port is published for it
+on the host; its data lives in a Docker volume (`prometheus-data`) and survives
+restarts.
 
 Prometheus also computes the error rate, the share of requests answered with a server
 error (5xx) over a recent window, and stores it as `api:error_ratio:rate5m`. The formula
@@ -305,16 +312,13 @@ Grafana's data source and the dashboard come from the files in `grafana/`, and G
 keeps no volume of its own. The dashboard is read-only on the page: a change goes into
 `grafana/dashboards/api.json`.
 
-The rates come from the growth between two collections, so after each API start the
-first request of each kind (route and status group) is not counted.
-
 #### Alerts
 The alert rule "API error rate" fires when the error rate stays above its threshold for
-the whole wait.
+the whole wait. The alert rule "Data not fresh" fires, one alert per security, when the
+security's trading days behind stay above its threshold for the whole wait.
 
 In Grafana, open Alerting → Alert rules and look at the folder "Financial forecasting":
-the rule is listed there with its state; when it fires it is listed as firing. No
-notification is sent anywhere.
+the rules are listed there with their state; an alert that fires is listed as firing.
 
 #### Monitoring settings
 | Setting | Value | File |
@@ -327,11 +331,27 @@ notification is sent anywhere.
 | "API error rate": wait | 5 minutes | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
 | "API error rate": without data | counts as OK | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
 | "API error rate": when Prometheus cannot be asked | shown as Error, not as firing | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
+| "Data not fresh": threshold | above 0 trading days | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
+| "Data not fresh": wait | none, fires at the first check | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
+| "Data not fresh": without data | counts as OK | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
+| "Data not fresh": when Prometheus cannot be asked | shown as Error, not as firing | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
 | "Trading days behind" panel: red from | 1 trading day | `grafana/dashboards/api.json` (`thresholds`) |
 
-The alert rule is team configuration and read-only on the Grafana page. A change goes
+The alert rules are team configuration and read-only on the Grafana page. A change goes
 into the file and into this table. Prometheus and Grafana read their files at start:
 `docker compose restart prometheus` or `docker compose restart grafana`.
+
+#### Known limitations
+- Without data, both alert rules count as OK: "API error rate" while no request came,
+  "Data not fresh" while the database cannot be read and for a security without a stored
+  day or a recorded load. A database that cannot be read shows as server errors on the
+  API.
+- A first server error after an API start is neither counted in the error rate nor shown
+  in Grafana. The API creates the counter of a kind of request (route and status group)
+  only when the first such request arrives, so Prometheus first collects it at 1, never
+  at 0; rates come from the growth between two collections, and the step from 0 to 1 is
+  never seen.
+- No notification is sent anywhere; firing alerts are only listed in Grafana.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses

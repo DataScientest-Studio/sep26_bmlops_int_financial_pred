@@ -34,3 +34,29 @@ groups:
         execErrState: Error
         annotations:
           summary: The API's error rate is above its threshold.
+
+      - uid: data-not-fresh
+        title: Data not fresh
+        # The rule fires when the step "threshold" is true.
+        condition: threshold
+        data:
+          - refId: days_behind
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              expr: trading_days_behind
+              instant: true
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: days_behind
+              # The number of trading days behind above which the rule fires.
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        # Fires at the first check: a trading day behind needs no waiting.
+        for: 0s
+        # No number of trading days behind means nothing to measure, not a fault.
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: "{{ $labels.symbol }} is trading days behind its latest load."

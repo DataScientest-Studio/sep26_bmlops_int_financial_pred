@@ -1,6 +1,6 @@
 """Access to the project database and the databases built with its tables."""
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import pandas as pd
@@ -22,6 +22,8 @@ READ_PRICES = text(
 )
 
 READ_LATEST_DAYS = text("SELECT symbol, max(day) FROM prices GROUP BY symbol")
+
+READ_LATEST_LOADS = text("SELECT symbol, fetched_at FROM loads")
 
 
 def connect(database_url: str) -> Engine:
@@ -146,3 +148,20 @@ def read_latest_days(engine: Engine) -> dict[str, date]:
         rows = connection.execute(READ_LATEST_DAYS).all()
 
     return {symbol: day for symbol, day in rows}
+
+
+def read_latest_loads(engine: Engine) -> dict[str, datetime]:
+    """Read when the latest load fetched each security.
+
+    @relation(REQ-MON-003, scope=function)
+
+    Args:
+        engine: Engine of the project database.
+
+    Returns:
+        The time of the latest fetch per symbol; a security never loaded is missing.
+    """
+    with engine.connect() as connection:
+        rows = connection.execute(READ_LATEST_LOADS).all()
+
+    return {symbol: fetched_at for symbol, fetched_at in rows}

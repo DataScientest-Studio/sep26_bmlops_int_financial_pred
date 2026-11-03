@@ -19,7 +19,7 @@ Model quality, measured on data the model has not seen, ordered by time:
 Operation of the running system:
 
 - Prediction latency (95th percentile) and error rate of the API.
-- Data freshness: trading days between the latest stored quote and the latest available quote.
+- Data freshness: trading days after the latest stored day that were final when the security's latest load ran.
 - Drift share: fraction of monitored features flagged as drifted in the latest check.
 - Training runs: duration and outcome (succeeded, promoted, kept as candidate).
 

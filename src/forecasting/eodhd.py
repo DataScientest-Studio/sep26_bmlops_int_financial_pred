@@ -8,6 +8,7 @@ import httpx2
 import pandas as pd
 
 from forecasting.db import DIVIDEND_COLUMNS, PRICE_COLUMNS, SPLIT_COLUMNS
+from forecasting.load import Delivery
 
 API_URL = "https://eodhd.com/api"
 # Seconds to wait for each network step (connecting, each read of the answer):
@@ -38,7 +39,7 @@ class EodhdSource:
             raise ValueError("The EODHD key is empty; set EODHD_API_KEY in .env")
         self._api_key = api_key
 
-    def fetch_history(self, symbol: str, start: date) -> pd.DataFrame:
+    def fetch_history(self, symbol: str, start: date) -> Delivery:
         """Fetch the daily price history of one security from a first day on.
 
         One request, one call, however many days it covers. The fetch time is taken
@@ -50,7 +51,8 @@ class EodhdSource:
             start: First day to deliver; a plan with a shorter history starts later.
 
         Returns:
-            One row per day, as `forecasting.load.PriceSource.fetch_history` describes.
+            The fetch time and one row per day, as
+            `forecasting.load.PriceSource.fetch_history` describes.
         """
         fetched_at = datetime.now(UTC)
         rows = self._get(f"eod/{symbol}", {"from": start.isoformat()})
@@ -59,7 +61,7 @@ class EodhdSource:
         days = [date.fromisoformat(text) for text in history["date"]]
         history = history.assign(day=days, fetched_at=fetched_at)
 
-        return history[PRICE_COLUMNS]
+        return Delivery(fetched_at, history[PRICE_COLUMNS])
 
     def fetch_splits(self, symbol: str) -> pd.DataFrame:
         """Fetch all splits of one security.

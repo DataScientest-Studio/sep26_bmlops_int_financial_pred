@@ -62,7 +62,7 @@ def engine(database_url: str) -> Iterator[Engine]:
     """Engine of this worker's database, emptied before each test."""
     engine = connect(database_url)
     with engine.begin() as connection:
-        connection.execute(text("TRUNCATE prices, splits, dividends"))
+        connection.execute(text("TRUNCATE prices, splits, dividends, loads"))
     yield engine
     engine.dispose()
 

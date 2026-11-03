@@ -16,10 +16,10 @@ from forecasting.trading_calendar import session_close
         (date(2025, 12, 24), date(2025, 12, 29), timedelta(0), 2),
     ],
 )
-def test_only_trading_days_with_a_final_price_count_as_behind(
+def test_only_trading_days_final_at_the_load_count_as_behind(
     example_settings, latest_day, due_day, offset, expected
 ):
-    """Counts only trading days whose final price is available, skipping holidays."""
+    """Counts only trading days final when the latest load ran, skipping holidays."""
     delay = example_settings.final_delay
-    now = session_close("XNYS", due_day) + delay + offset
-    assert trading_days_behind("XNYS", latest_day, now, delay) == expected
+    fetched_at = session_close("XNYS", due_day) + delay + offset
+    assert trading_days_behind("XNYS", latest_day, fetched_at, delay) == expected

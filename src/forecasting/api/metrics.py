@@ -1,7 +1,7 @@
 """Numbers the API reports to Prometheus."""
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import FastAPI, Response
 from prometheus_client import (
@@ -14,7 +14,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy.exc import OperationalError
 
 from forecasting.api.dependencies import EngineDep, SettingsDep
-from forecasting.db import read_latest_days
+from forecasting.db import read_latest_days, read_latest_loads
 from forecasting.load import is_final
 from forecasting.trading_calendar import next_trading_day
 
@@ -39,7 +39,8 @@ def add_metrics(app: FastAPI) -> None:
     registry = CollectorRegistry()
     days_behind = Gauge(
         "trading_days_behind",
-        "Trading days after the latest stored day whose final price is available.",
+        "Trading days after the latest stored day that were final when the "
+        "security's latest load ran.",
         ["symbol"],
         registry=registry,
     )
@@ -60,46 +61,49 @@ def add_metrics(app: FastAPI) -> None:
         """
         try:
             latest_days = read_latest_days(engine)
+            latest_loads = read_latest_loads(engine)
         except OperationalError:
             logger.exception(
                 "Trading days behind left out: the database cannot be read."
             )
             days_behind.clear()
         else:
-            now = datetime.now(UTC)
             for security in settings.securities + settings.indices:
-                if security.symbol in latest_days:
+                symbol = security.symbol
+                # Without a stored day or a recorded load there is nothing to measure:
+                if symbol in latest_days and symbol in latest_loads:
                     behind = trading_days_behind(
                         security.exchange,
-                        latest_days[security.symbol],
-                        now,
+                        latest_days[symbol],
+                        latest_loads[symbol],
                         settings.final_delay,
                     )
-                    days_behind.labels(security.symbol).set(behind)
+                    days_behind.labels(symbol).set(behind)
 
         return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
 
 def trading_days_behind(
-    exchange: str, latest_day: date, now: datetime, final_delay: timedelta
+    exchange: str, latest_day: date, fetched_at: datetime, final_delay: timedelta
 ) -> int:
-    """Count trading days after the latest stored day whose final price is available.
+    """Count trading days after the latest stored day, final at the security's load.
 
     @relation(REQ-MON-003, scope=function)
 
     Args:
         exchange: MIC of the exchange the security trades on.
         latest_day: Latest stored day of the security.
-        now: Current time, timezone-aware.
+        fetched_at: Time the latest load fetched the security, timezone-aware.
         final_delay: Time after the exchange's close from which a quote is final.
 
     Returns:
-        The number of those trading days; 0 when no such day has passed.
+        The number of those trading days; 0 when none was final at the security's
+        latest load.
     """
     behind = 0
     day = next_trading_day(exchange, latest_day)
-    # A price fetched now would be final, so that day's final price is available.
-    while is_final(exchange, day, now, final_delay):
+    # The day was final when the load ran, so the load should have stored it.
+    while is_final(exchange, day, fetched_at, final_delay):
         behind += 1
         day = next_trading_day(exchange, day)
 
