@@ -1,0 +1,10 @@
+apiVersion: 1
+
+providers:
+  - name: forecasting
+    folder: Financial forecasting
+    type: file
+    disableDeletion: true
+    options:
+      # Where compose.yaml mounts the dashboard files.
+      path: /var/lib/grafana/dashboards

@@ -2,6 +2,7 @@
 
 from fastapi import FastAPI
 
+from forecasting.api.metrics import add_metrics
 from forecasting.api.routes import router
 
 
@@ -22,6 +23,8 @@ def create_app() -> FastAPI:
         description="Next-trading-day price change forecasts. Not investment advice.",
     )
     app.include_router(router)
+    add_metrics(app)
+
     return app
 
 

@@ -13,6 +13,8 @@ dependencies = [
     "httpx2>=2.13.1",
     "mlflow>=3.17.2",
     "pandas>=3.0.6",
+    "prometheus-client>=0.26.0",
+    "prometheus-fastapi-instrumentator>=8.1.0",
     "psycopg[binary]>=3.3.6",
     "pyyaml==6.0.3",
     "scikit-learn>=1.9.1",
@@ -43,6 +45,7 @@ addopts = "--strict-markers -rA"
 markers = [
     "acceptance: black-box test of a requirement; red until the feature is built",
     "eodhd: contract test of EODHD; calls it with your own key from .env",
+    "integration: test of our code against the real database",
 ]
 
 [tool.pyright]

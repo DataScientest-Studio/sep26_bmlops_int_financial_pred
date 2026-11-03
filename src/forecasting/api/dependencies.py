@@ -1,7 +1,9 @@
 """Shared parts the endpoints receive; tests replace them."""
 
 from functools import cache
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy import Engine
 
 from forecasting.config import Settings, load_settings
@@ -24,3 +26,7 @@ def get_engine() -> Engine:
     @relation(REQ-SVC-001, scope=function)
     """
     return connect(get_settings().database_url)
+
+
+EngineDep = Annotated[Engine, Depends(get_engine)]
+SettingsDep = Annotated[Settings, Depends(get_settings)]

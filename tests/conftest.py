@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from dataclasses import replace
 from pathlib import Path
 
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, make_url, text
@@ -33,7 +34,14 @@ def database_url(example_settings: Settings, worker_id: str) -> Iterator[str]:
     url = make_url(example_settings.database_url)
     name = f"{url.database}_test_{worker_id}"
     test_url = url.set(database=name).render_as_string(hide_password=False)
-    create_database(test_url)
+    try:
+        create_database(test_url)
+    except psycopg.OperationalError:
+        pytest.fail(
+            "Cannot log in to the database with the values of .env.example; "
+            "start it with make db and keep those values in .env",
+            pytrace=False,
+        )
     yield test_url
     drop_database(test_url)
 

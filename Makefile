@@ -4,7 +4,8 @@
         test acceptance contract \
         api api-stop \
         mlflow mlflow-stop \
-        airflow airflow-stop
+        airflow airflow-stop \
+        monitoring monitoring-stop
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
@@ -77,11 +78,12 @@ TEST_ENV = env -i PATH="$$PATH" HOME="$$HOME" uv run --env-file .env.example
 
 # Runs the unit tests in parallel; needs no database.
 test:
-	$(TEST_ENV) pytest -n auto -m "not acceptance and not eodhd"
+	$(TEST_ENV) pytest -n auto -m "not acceptance and not integration and not eodhd"
 
-# Runs the black-box tests of the requirements; the passed count shows progress.
-acceptance:
-	$(TEST_ENV) pytest -n auto -m acceptance
+# Starts the database, then runs the black-box tests of the requirements and the
+# integration tests against the database; the passed count shows progress.
+acceptance: db
+	$(TEST_ENV) pytest -n auto -m "acceptance or integration"
 
 # Checks how EODHD delivers data, with your own key from .env; a check your key's
 # history, remaining calls or plan cannot support is skipped with its reason. Short
@@ -121,3 +123,16 @@ airflow:
 # Stops Airflow and the data service; the database keeps running.
 airflow-stop:
 	docker compose stop $(AIRFLOW_SERVICES) data
+
+# The monitoring services.
+MONITORING_SERVICES = prometheus grafana
+
+# Starts Prometheus and Grafana with the API, rebuilt when the code changed; returns
+# once the Grafana page answers on http://localhost:3000 (GRAFANA_PORT in .env).
+monitoring:
+	mkdir -p models datasets
+	docker compose up --build --detach --wait api $(MONITORING_SERVICES)
+
+# Stops Prometheus and Grafana; the API keeps running.
+monitoring-stop:
+	docker compose stop $(MONITORING_SERVICES)

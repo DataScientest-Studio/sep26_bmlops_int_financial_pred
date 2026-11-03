@@ -1,5 +1,6 @@
 """Access to the project database and the databases built with its tables."""
 
+from datetime import date
 from typing import Any
 
 import pandas as pd
@@ -19,6 +20,8 @@ READ_PRICES = text(
     "SELECT day, open, high, low, close, volume, fetched_at FROM prices"
     " WHERE symbol = :symbol ORDER BY day"
 )
+
+READ_LATEST_DAYS = text("SELECT symbol, max(day) FROM prices GROUP BY symbol")
 
 
 def connect(database_url: str) -> Engine:
@@ -126,3 +129,20 @@ def read_prices(engine: Engine, symbol: str) -> pd.DataFrame:
         prices[column] = prices[column].astype(float)
 
     return prices
+
+
+def read_latest_days(engine: Engine) -> dict[str, date]:
+    """Read the latest stored day of each security.
+
+    @relation(REQ-MON-003, scope=function)
+
+    Args:
+        engine: Engine of the project database.
+
+    Returns:
+        The latest stored day per symbol; a security without stored prices is missing.
+    """
+    with engine.connect() as connection:
+        rows = connection.execute(READ_LATEST_DAYS).all()
+
+    return {symbol: day for symbol, day in rows}

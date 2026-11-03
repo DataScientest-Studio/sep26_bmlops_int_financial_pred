@@ -6,7 +6,7 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 
 | Package | What it does | Used for |
 |---|---|---|
-| fastapi | Web framework for HTTP APIs: turns Python functions into endpoints, checks request and response bodies, and generates the interactive documentation at `/docs`. | The API (`forecasting.api`): `/health`, `/training`, `/predict`; the data service (`forecasting.data_service`): `/health`, `/load`, `/replay`. |
+| fastapi | Web framework for HTTP APIs: turns Python functions into endpoints, checks request and response bodies, and generates the interactive documentation at `/docs`. | The API (`forecasting.api`): `/health`, `/training`, `/predict`, `/metrics`; the data service (`forecasting.data_service`): `/health`, `/load`, `/replay`. |
 | uvicorn | Web server that runs a FastAPI application and listens on a port. | The `api` service (`make api`) and the `data` service. |
 | pandas | Tables in memory (DataFrame): reading query results, computing changes and rolling values over days. | Prices, features, target, evaluation. |
 | scikit-learn | Machine-learning library: regression models, metrics, preprocessing. | The model (Ridge, see `decisions/regressors.md`) and its error metrics. |
@@ -19,6 +19,8 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 | dvc-s3 | S3 remote plugin for DVC: lets `dvc push` and `dvc pull` store and fetch dataset copies in an S3-compatible bucket. | Pushing each dataset version from `forecasting.datasets` into the `datasets` bucket of the object store (SeaweedFS). |
 | pyyaml | Reads and writes YAML, a text format for structured data. | Reading the version id from the record file DVC writes next to each dataset (`forecasting.datasets`). |
 | httpx2 | HTTP client library, the successor of `httpx`: sends requests to web services and reads their answers. FastAPI's test client is built on it too: tests send requests to the API in memory, without starting a server or opening a port. | Fetching prices, splits and dividends from EODHD (`forecasting.eodhd`); API tests (`fastapi.testclient.TestClient`); `make contract`. |
+| prometheus-client | Prometheus's library for Python: holds counters, gauges and histograms and writes them in the text format Prometheus collects. | All numbers of the API's `/metrics` (`forecasting.api.metrics`): the API's own registry with the request numbers and the trading days behind, and the `/metrics` text. |
+| prometheus-fastapi-instrumentator | Request counter for FastAPI: counts an application's requests per route, method and status code and measures how long they take. It adds no route here: `/metrics` is the project's own. | The API's request count, response time and error rate, put into the API's own registry (`forecasting.api.metrics`). |
 
 ## Development only (`dev` group)
 

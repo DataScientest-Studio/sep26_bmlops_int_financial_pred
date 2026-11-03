@@ -1,11 +1,8 @@
 """Endpoints of the API."""
 
-from typing import Annotated
+from fastapi import APIRouter, HTTPException
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import Engine
-
-from forecasting.api.dependencies import get_engine, get_settings
+from forecasting.api.dependencies import EngineDep, SettingsDep
 from forecasting.api.schemas import (
     ForecastResponse,
     SecurityRequest,
@@ -16,9 +13,6 @@ from forecasting.predict import predict
 from forecasting.train import train
 
 router = APIRouter()
-
-EngineDep = Annotated[Engine, Depends(get_engine)]
-SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
 def _refuse_unknown(symbol: str, settings: Settings) -> None:

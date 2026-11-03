@@ -296,7 +296,56 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
+  # Collects the API's numbers; reachable only inside Compose, where Grafana reads
+  # them, so no port is published on the host.
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: [CMD, wget, --quiet, --spider, http://localhost:9090/-/ready]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # The Grafana page on 127.0.0.1: shows the numbers Prometheus collected. Its data
+  # source and dashboards come from grafana/, so it keeps no volume of its own.
+  grafana:
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set in .env}
+      # No usage reports, update checks, news feed or Gravatar images.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_SECURITY_DISABLE_GRAVATAR: "true"
+      # Use the Prometheus plugin bundled with the image: no download at start.
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
+      # Skip the default plugins this project does not use.
+      GF_PLUGINS_DISABLE_PLUGINS: >-
+        elasticsearch,grafana-advisor-app,grafana-exploretraces-app,
+        grafana-lokiexplore-app,grafana-metricsdrilldown-app,
+        grafana-postgresql-datasource,grafana-pyroscope-app,
+        grafana-pyroscope-datasource,influxdb,jaeger,loki,mssql,mysql,opentsdb,
+        stackdriver,tempo,zipkin
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:?set in .env}:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    healthcheck:
+      test: [CMD, curl, --fail, http://localhost:3000/api/health]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
 volumes:
   db-data:
   object-store-data:
   airflow-logs:
+  prometheus-data:
