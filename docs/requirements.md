@@ -292,9 +292,18 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **UID**: REQ-MON-004 \
 **Status**: Draft \
 **Tags**: phase-3 \
+**VERIFICATION**: Demonstration
+
+**Statement**: The system raises an alert when a monitored metric crosses its configured threshold.
+
+### Training started by an alert
+
+**UID**: REQ-MON-005 \
+**Status**: Draft \
+**Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: The system raises an alert when a monitored metric crosses its configured threshold; a configured alert starts the training pipeline.
+**Statement**: An alert configured to start training starts the training pipeline.
 
 ## App
 

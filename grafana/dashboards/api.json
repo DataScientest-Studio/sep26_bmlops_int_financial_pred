@@ -46,7 +46,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "(sum(rate(http_requests_total{status=\"5xx\"}[$__rate_interval])) or vector(0)) / sum(rate(http_requests_total[$__rate_interval]))",
+          "expr": "api:error_ratio:rate5m",
           "legendFormat": "errors"
         }
       ]

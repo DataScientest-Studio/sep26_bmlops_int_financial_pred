@@ -33,7 +33,7 @@ the table.
 | History to train on | training uses every stored final day of a security; how far back that reaches depends on each member's key and database, so it may differ from machine to machine | Decided (Tobias) | Oct 22, 2026 5) | [Data source](#data-source) |
 | Code files | separate modules for features, training, evaluation and prediction in `src/forecasting/` | Built | Oct 22, 2026 5) | — |
 | Model store | MLflow's model registry keeps the models; the MLflow server keeps its records in a database of its own on the project's PostgreSQL server and the model files in a local S3-compatible object store, SeaweedFS | Coach feedback (registry, PostgreSQL, separate object store); Decided (Tobias) (SeaweedFS) | Oct 22, 2026 6) | [Object store](#object-store), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) item 3 |
-| Monitoring | Evidently for drift; Prometheus and Grafana for the metrics and the dashboard, API usage included | Coach feedback | Oct 22, 2026 6) | REQ-MON-001–004 |
+| Monitoring | Evidently for drift; Prometheus and Grafana for the metrics and the dashboard, API usage included | Coach feedback | Oct 22, 2026 6) | REQ-MON-001–005 |
 | Versioning | every training run records the model, the version of the dataset it trained on and the commit of the code it ran, or `unknown` for an image `make` did not build | Coach feedback | Oct 22, 2026 6) | REQ-MOD-004, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) items 3 and 5 |
 | Drift reports | stored in MLflow with the run they belong to; no Evidently UI (can be added later) | Decided (Tobias) | Nov 2, 2026 7) | REQ-MON-001–002 |
 
@@ -488,13 +488,18 @@ in brackets.
   - [ ] on a configured schedule, the logged prediction inputs are compared with
     reference data; the report and metrics are recorded, and the training pipeline
     starts when drift exceeds the configured threshold (1, 3; REQ-MON-002)
-- [ ] **6 Alerts** (2; 1 for the webhook; REQ-MON-004): a Grafana alert on a metric that
-  crosses its configured threshold calls a webhook that starts the training pipeline
+- [ ] **6 Alerts** (REQ-MON-004, REQ-MON-005)
+  - [x] Grafana raises an alert when the API's error rate crosses its configured
+    threshold (2; REQ-MON-004)
+  - [ ] Grafana raises an alert when a security misses a trading day that was final when
+    the latest load ran, or when the daily update is missed (2; REQ-MON-004)
+  - [ ] an alert configured to start training calls a webhook that starts the training
+    pipeline (1; REQ-MON-005)
 - [ ] **7 Demo app** (1; REQ-APP-001, REQ-APP-002, REQ-APP-003): the forecast view, the
   notice "not investment advice" on every page and the model results next to the
   baselines
 - [ ] **8 Acceptance tests of phase 3**: written before the code of each item, for
-  REQ-SVC-003, REQ-AUT-002, REQ-MON-001, REQ-MON-002, REQ-MON-004, REQ-APP-001,
+  REQ-SVC-003, REQ-AUT-002, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001,
   REQ-APP-002 and REQ-APP-003
 
 ## Open

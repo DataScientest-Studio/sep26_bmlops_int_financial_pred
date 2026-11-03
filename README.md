@@ -63,9 +63,14 @@ yet.
 ├── grafana/
 │   ├── dashboards/
 │   │   └── api.json             the dashboard "API" (Grafana reads it at start)
-│   └── provisioning/            Grafana's data source (Prometheus) and where it finds the dashboards
+│   └── provisioning/
+│       ├── alerting/
+│       │   └── alerts.yaml      the alert rule "API error rate"
+│       ├── dashboards/          where Grafana finds the dashboards
+│       └── datasources/         Grafana's data source (Prometheus)
 ├── prometheus/
-│   └── prometheus.yml           what Prometheus collects, from where and how often
+│   ├── prometheus.yml           what Prometheus collects, from where and how often
+│   └── rules.yml                the error rate Prometheus computes and stores
 ├── references/                  course brief, condensed
 │   ├── README.md                index, sources and their precedence
 │   ├── subject.md               prediction task, scope levels, data sources
@@ -152,11 +157,11 @@ Copies of the training datasets are kept the same way in `datasets/`.
 | `make contract` | checks how EODHD delivers data, with your own key from `.env`; a check your key's history, remaining calls or plan cannot support is skipped with its reason |
 | `make api` | start the API on http://localhost:8000, documentation at `/docs`; returns once it answers |
 | `make api-stop` | stop the API |
-| `make mlflow` | start the MLflow server with the database and the object store; its page is on http://localhost:5000 (see "Model tracking" below); returns once it answers |
+| `make mlflow` | start the MLflow server with the database and the object store; its page is on `localhost` at the port `MLFLOW_PORT` from `.env` (see "Model tracking" below); returns once it answers |
 | `make mlflow-stop` | stop the MLflow server and the object store; the database keeps running |
-| `make airflow` | start Airflow with the data service; its page is on http://localhost:8080 (see "Scheduled pipelines" below); returns once it answers |
+| `make airflow` | start Airflow with the data service; its page is on `localhost` at the port `AIRFLOW_PORT` from `.env` (see "Scheduled pipelines" below); returns once it answers |
 | `make airflow-stop` | stop Airflow and the data service; the database keeps running |
-| `make monitoring` | start Prometheus and Grafana with the API; the Grafana page is on http://localhost:3000 (see "Monitoring" below); returns once it answers |
+| `make monitoring` | start Prometheus and Grafana with the API; the Grafana page is on `localhost` at the port `GRAFANA_PORT` from `.env` (see "Monitoring" below); returns once it answers |
 | `make monitoring-stop` | stop Prometheus and Grafana; the API keeps running |
 
 The tests log in with the database values of `.env.example`, while `make db` uses those
@@ -207,12 +212,12 @@ replay database to start over.
 
 ### Scheduled pipelines
 Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on
-http://localhost:8080 (the port is `AIRFLOW_PORT` in `.env`). Log in as `admin` with the
-password `AIRFLOW_ADMIN_PASSWORD` from `.env`. Airflow keeps its own database and login
-on the project's database server, both created on the first start, and it receives none
-of the project's settings apart from `FINAL_DELAY_MINUTES` and
-`REPLAY_INTERVAL_SECONDS`, never the EODHD key. Its tasks call the data service, which
-runs the load and the replay inside Docker and is not reachable from the host.
+`localhost` at the port `AIRFLOW_PORT` from `.env`. Log in as `admin` with the password
+`AIRFLOW_ADMIN_PASSWORD` from `.env`. Airflow keeps its own database and login on the
+project's database server, both created on the first start, and it receives none of the
+project's settings apart from `FINAL_DELAY_MINUTES` and `REPLAY_INTERVAL_SECONDS`, never
+the EODHD key. Its tasks call the data service, which runs the load and the replay
+inside Docker and is not reachable from the host.
 
 The daily update pipeline (`daily_update`) runs one load on every weekday at 16:00 New
 York time plus `FINAL_DELAY_MINUTES`, the same load as `make update`. A failed run is
@@ -256,12 +261,11 @@ DVC runs here without Git: the copies stay on your machine, are never committed
 ### Model tracking
 [MLflow](https://mlflow.org) records the training runs and holds the model registry.
 `make mlflow` starts the MLflow server (and `make api` and the project commands start it
-too); its page is on http://localhost:5000 (the port is `MLFLOW_PORT` in `.env`). It
-keeps its run and model records in its own database `mlflow` on the project's database
-server, with its own login (`MLFLOW_DB_PASSWORD` in `.env`), both created on the first
-start, and stores the model files in the object store (see
-[Object store](#object-store)). The API and the project commands reach the server inside
-Docker at `http://mlflow:5000`.
+too); its page is on `localhost` at the port `MLFLOW_PORT` from `.env`. It keeps its run
+and model records in its own database `mlflow` on the project's database server, with
+its own login (`MLFLOW_DB_PASSWORD` in `.env`), both created on the first start, and
+stores the model files in the object store (see [Object store](#object-store)). The API
+and the project commands reach the server inside Docker at `http://mlflow:5000`.
 
 ### Object store
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) runs in Docker (`object-store`) as
@@ -274,24 +278,28 @@ survives restarts. Only the services inside Docker reach it (`OBJECT_STORE_USER`
 ### Monitoring
 The API reports numbers about its own use. [Prometheus](https://prometheus.io) collects
 them and [Grafana](https://grafana.com) draws them. `make monitoring` starts both with
-the API; Grafana's page is on http://localhost:3000 (the port is `GRAFANA_PORT` in
-`.env`). Log in as `admin` with the password `GRAFANA_ADMIN_PASSWORD` from `.env`.
+the API; Grafana's page is on `localhost` at the port `GRAFANA_PORT` from `.env`. Log in
+as `admin` with the password `GRAFANA_ADMIN_PASSWORD` from `.env`.
 
 The API lists its numbers at `/metrics`: per route, how many requests came, how long
 they took and which status group (2xx, 4xx, 5xx) they got. The health check and
 `/metrics` itself are not counted. It also lists `trading_days_behind` per security: the
 number of trading days after the latest stored day whose final price is available; 0
-means none has passed. Prometheus collects the list every 15 seconds. No port is
-published for it on the host; its data lives in a Docker volume (`prometheus-data`) and
-survives restarts.
+means none has passed. Prometheus collects the list regularly (see
+[Monitoring settings](#monitoring-settings)). No port is published for it on the host;
+its data lives in a Docker volume (`prometheus-data`) and survives restarts.
+
+Prometheus also computes the error rate, the share of requests answered with a server
+error (5xx) over a recent window, and stores it as `api:error_ratio:rate5m`. The formula
+is written once, in `prometheus/rules.yml`; the dashboard and the alert rule "API error
+rate" both read the stored value.
 
 The dashboard "API" in the folder "Financial forecasting" shows these panels:
 
 - requests per second, per route;
 - the response time that 95% of requests stay under, per route;
-- the error rate, the share of requests answered with a server error (5xx); a 404 for an
-  unknown security is not an error;
-- the trading days behind, per security: green at 0, red from 1.
+- the error rate; a 404 for an unknown security is not an error;
+- the trading days behind, per security: green while up to date, red once behind.
 
 Grafana's data source and the dashboard come from the files in `grafana/`, and Grafana
 keeps no volume of its own. The dashboard is read-only on the page: a change goes into
@@ -299,6 +307,31 @@ keeps no volume of its own. The dashboard is read-only on the page: a change goe
 
 The rates come from the growth between two collections, so after each API start the
 first request of each kind (route and status group) is not counted.
+
+#### Alerts
+The alert rule "API error rate" fires when the error rate stays above its threshold for
+the whole wait.
+
+In Grafana, open Alerting → Alert rules and look at the folder "Financial forecasting":
+the rule is listed there with its state; when it fires it is listed as firing. No
+notification is sent anywhere.
+
+#### Monitoring settings
+| Setting | Value | File |
+|---|---|---|
+| How often Prometheus collects the numbers | 15 seconds | `prometheus/prometheus.yml` (`scrape_interval`) |
+| How often Prometheus computes the error rate | 15 seconds | `prometheus/prometheus.yml` (`evaluation_interval`) |
+| Window of the error rate | 5 minutes | `prometheus/rules.yml` (`[5m]`); the name `api:error_ratio:rate5m` carries the window and is read in `grafana/dashboards/api.json` and `grafana/provisioning/alerting/alerts.yaml` |
+| How often Grafana checks the alert rules | 1 minute | `grafana/provisioning/alerting/alerts.yaml` (`interval`) |
+| "API error rate": threshold | above 5% (0.05) | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
+| "API error rate": wait | 5 minutes | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
+| "API error rate": without data | counts as OK | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
+| "API error rate": when Prometheus cannot be asked | shown as Error, not as firing | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
+| "Trading days behind" panel: red from | 1 trading day | `grafana/dashboards/api.json` (`thresholds`) |
+
+The alert rule is team configuration and read-only on the Grafana page. A change goes
+into the file and into this table. Prometheus and Grafana read their files at start:
+`docker compose restart prometheus` or `docker compose restart grafana`.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses

@@ -102,8 +102,8 @@ api-stop:
 	docker compose stop api
 
 # Starts the MLflow server and its page with the database and the object store,
-# rebuilt when the code changed; returns once it answers on http://localhost:5000
-# (MLFLOW_PORT in .env).
+# rebuilt when the code changed; returns once it answers on localhost at the port
+# MLFLOW_PORT from .env.
 mlflow:
 	docker compose up --build --detach --wait mlflow
 
@@ -115,7 +115,7 @@ mlflow-stop:
 AIRFLOW_SERVICES = airflow-apiserver airflow-scheduler airflow-dag-processor
 
 # Starts Airflow with the database and the data service, rebuilt when the code changed;
-# returns once its page answers on http://localhost:8080 (AIRFLOW_PORT in .env).
+# returns once its page answers on localhost at the port AIRFLOW_PORT from .env.
 airflow:
 	mkdir -p models datasets
 	docker compose up --build --detach --wait $(AIRFLOW_SERVICES)
@@ -128,7 +128,7 @@ airflow-stop:
 MONITORING_SERVICES = prometheus grafana
 
 # Starts Prometheus and Grafana with the API, rebuilt when the code changed; returns
-# once the Grafana page answers on http://localhost:3000 (GRAFANA_PORT in .env).
+# once the Grafana page answers on localhost at the port GRAFANA_PORT from .env.
 monitoring:
 	mkdir -p models datasets
 	docker compose up --build --detach --wait api $(MONITORING_SERVICES)

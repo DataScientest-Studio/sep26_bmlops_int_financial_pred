@@ -1,0 +1,11 @@
+# Formulas Prometheus computes regularly and stores under a new name.
+# README.md, table "Monitoring settings", lists the values below; change both together.
+groups:
+  - name: api
+    rules:
+      # Share of requests answered with a server error (5xx) over the window its name
+      # carries; 0 while requests came and none failed; no value while none came.
+      - record: api:error_ratio:rate5m
+        expr: >-
+          (sum(rate(http_requests_total{status="5xx"}[5m])) or vector(0))
+          / (sum(rate(http_requests_total[5m])) > 0)

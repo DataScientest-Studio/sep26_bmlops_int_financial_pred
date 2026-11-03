@@ -1,6 +1,12 @@
+# README.md, table "Monitoring settings", lists the values below; change both together.
 global:
   # How often Prometheus collects the numbers.
   scrape_interval: 15s
+  # How often Prometheus computes the formulas in rule_files.
+  evaluation_interval: 15s
+
+# Files with formulas Prometheus computes; the path is relative to this file.
+rule_files: [rules.yml]
 
 scrape_configs:
   - job_name: api

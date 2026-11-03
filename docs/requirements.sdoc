@@ -385,10 +385,20 @@ The system collects request count, latency and error rate of the API and shows t
 UID: REQ-MON-004
 STATUS: Draft
 TAGS: phase-3
-VERIFICATION: Test
+VERIFICATION: Demonstration
 TITLE: Alerts
 STATEMENT: >>>
-The system raises an alert when a monitored metric crosses its configured threshold; a configured alert starts the training pipeline.
+The system raises an alert when a monitored metric crosses its configured threshold.
+<<<
+
+[REQUIREMENT]
+UID: REQ-MON-005
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Training started by an alert
+STATEMENT: >>>
+An alert configured to start training starts the training pipeline.
 <<<
 
 [[/SECTION]]

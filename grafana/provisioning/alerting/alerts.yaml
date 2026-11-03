@@ -1,0 +1,36 @@
+apiVersion: 1
+
+# README.md, table "Monitoring settings", lists the values below; change both together.
+groups:
+  - orgId: 1
+    name: api
+    # The folder of the dashboards, found by its title.
+    folder: Financial forecasting
+    # How often Grafana checks the alert rules.
+    interval: 1m
+    rules:
+      - uid: api-error-rate
+        title: API error rate
+        # The rule fires when the step "threshold" is true.
+        condition: threshold
+        data:
+          - refId: error_rate
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              expr: api:error_ratio:rate5m
+              instant: true
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: error_rate
+              # The error rate above which the rule fires.
+              conditions: [{evaluator: {type: gt, params: [0.05]}}]
+        # How long the threshold must stay crossed before the alert fires.
+        for: 5m
+        # No requests means no error rate, not a fault.
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: The API's error rate is above its threshold.
