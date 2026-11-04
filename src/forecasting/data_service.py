@@ -17,6 +17,7 @@ async def read_settings_at_start(app: FastAPI) -> AsyncIterator[None]:
     """Read the settings at start, so a refused setting stops the start.
 
     @relation(REQ-AUT-003, scope=function)
+    @relation(REQ-AUT-007, scope=function)
 
     Args:
         app: The application being started; not read.

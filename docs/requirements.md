@@ -43,6 +43,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 - Docker Engine 28.0 or later (Docker Desktop includes it).
 - Market data from EODHD with the member's own key; the reference securities (six stocks, two market indices) fit the free tier's 20 calls per day with one load or update per day.
 - Every service listens on the local machine only (127.0.0.1).
+- Alert thresholds and collection intervals are set in the project's own files, never in a member's environment file.
 - The scheduled pipeline runs either the daily update or replay, one at a time.
 - At most one load or replay runs at a time, scheduled or manual; a manual one runs only while the scheduled pipeline is paused.
 - At most one training runs at a time, scheduled or manual; a manual one runs only while the scheduled pipeline is paused.
@@ -258,6 +259,15 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **VERIFICATION**: Inspection
 
 **Statement**: The system's commands, and its services built from its own code, run in one packaged environment with the pinned package versions.
+
+### Configured values checked at start
+
+**UID**: REQ-AUT-007 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Test
+
+**Statement**: A configured value, in the member's environment file or the project's configuration folder, that is missing or outside its allowed range makes the commands and services that read it refuse to start, with a message that names the setting.
 
 ## Monitoring
 

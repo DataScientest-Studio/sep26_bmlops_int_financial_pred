@@ -97,6 +97,18 @@ def test_history_start_before_the_calendar_is_refused(monkeypatch, tmp_path):
         load_settings()
 
 
+def test_history_start_in_the_future_is_refused(monkeypatch, tmp_path):
+    """A first day of history after today is refused."""
+    _use_securities_file(
+        monkeypatch,
+        tmp_path,
+        "[[securities]]\nsymbol = 'TEST.US'\nexchange = 'XNYS'\n\n" + INDEX_ENTRY,
+    )
+    monkeypatch.setenv("HISTORY_START", "9999-12-31")
+    with pytest.raises(ValueError, match="HISTORY_START"):
+        load_settings()
+
+
 def test_code_version_defaults_to_unknown(monkeypatch):
     """Without CODE_VERSION in the environment, the code version is unknown."""
     monkeypatch.delenv("CODE_VERSION", raising=False)

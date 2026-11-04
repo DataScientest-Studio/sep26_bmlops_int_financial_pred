@@ -162,18 +162,19 @@ def load_settings() -> Settings:
     @relation(REQ-DAT-007, scope=function)
     @relation(REQ-MOD-004, scope=function)
     @relation(REQ-AUT-005, scope=function)
+    @relation(REQ-AUT-007, scope=function)
 
     Returns:
         The settings of this deployment.
 
     Raises:
         ValueError: If HISTORY_START lies before the first day the trading calendar
-            knows; if final_delay_minutes is not an integer from SHORTEST_FINAL_DELAY
-            to LONGEST_FINAL_DELAY minutes; if load_limit_minutes is not an integer
-            from SHORTEST_LOAD_LIMIT to LONGEST_LOAD_LIMIT minutes; if start_after plus
-            the final delay reaches the next day; if weekdays of the daily update are
-            invalid; if a symbol or exchange of the securities file is not a non-empty
-            text.
+            knows or after today; if final_delay_minutes is not an integer from
+            SHORTEST_FINAL_DELAY to LONGEST_FINAL_DELAY minutes; if load_limit_minutes
+            is not an integer from SHORTEST_LOAD_LIMIT to LONGEST_LOAD_LIMIT minutes;
+            if start_after plus the final delay reaches the next day; if weekdays of the
+            daily update are invalid; if a symbol or exchange of the securities file is
+            not a non-empty text.
     """
     env = os.environ
     # URL.create escapes characters with a meaning in URLs, such as @ in a password.
@@ -214,8 +215,10 @@ def load_settings() -> Settings:
             f"{schedule['final_delay_minutes']} minutes must end on the same day"
         )
     history_start = date.fromisoformat(env["HISTORY_START"])
-    if history_start < CALENDAR_START:
-        raise ValueError(f"HISTORY_START must be {CALENDAR_START} or later")
+    if not CALENDAR_START <= history_start <= date.today():
+        raise ValueError(
+            f"HISTORY_START must be from {CALENDAR_START} to today, got {history_start}"
+        )
 
     return Settings(
         database_url=database_url.render_as_string(hide_password=False),

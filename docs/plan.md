@@ -36,7 +36,8 @@ the table.
 | Monitoring | Evidently for drift; Prometheus and Grafana for the metrics and the dashboard, API usage included | Coach feedback | Oct 22, 2026 6) | REQ-MON-001–005 |
 | Versioning | every training run records the model, the version of the dataset it trained on and the commit of the code it ran, or `unknown` for an image `make` did not build | Coach feedback | Oct 22, 2026 6) | REQ-MOD-004, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) items 3 and 5 |
 | Drift reports | stored in MLflow with the run they belong to; no Evidently UI (can be added later) | Decided (Tobias) | Nov 2, 2026 7) | REQ-MON-001–002 |
-| Daily update schedule | the schedule and the final delay are team configuration in `config/daily_update.toml`, read by the pipeline and the API; the values are checked against ranges set in `src/forecasting/config.py`, and a refused value stops the start of the API and the data service | Decided (Tobias) | Nov 4, 2026 8) | [Provisional closes](#provisional-closes) (final delay), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) (schedule settings) |
+| Daily update schedule | the schedule and the final delay are team configuration in `config/daily_update.toml`, read by the pipeline and the API | Decided (Tobias) | Nov 4, 2026 8) | [Provisional closes](#provisional-closes) (final delay), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) (schedule settings) |
+| Settings checks | configured values are checked when the API, the data service or a command starts; a missing or out-of-range value stops that start with a message naming the setting; `make contract` checks each stock's exchange against EODHD's list of exchanges | Decided (Tobias) | Nov 4, 2026 8) | REQ-AUT-007 |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm
 (CEST).
@@ -507,8 +508,8 @@ in brackets.
   notice "not investment advice" on every page and the model results next to the
   baselines
 - [ ] **8 Acceptance tests of phase 3**: written before the code of each item, for
-  REQ-SVC-003, REQ-AUT-002, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001,
-  REQ-APP-002 and REQ-APP-003
+  REQ-SVC-003, REQ-AUT-002, REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005,
+  REQ-APP-001, REQ-APP-002 and REQ-APP-003
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings,
