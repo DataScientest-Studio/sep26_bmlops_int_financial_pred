@@ -1,4 +1,4 @@
-"""Contract tests of EODHD: how it delivers prices and splits, read through our client.
+"""Contract tests of EODHD: how it delivers prices, splits and exchanges.
 
 They call EODHD with the key in `.env` (`make contract`), so a change in what EODHD
 delivers fails a test. A check the key cannot support (history that does not reach
@@ -7,14 +7,16 @@ reason.
 """
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx2
 import pandas as pd
 import pytest
 from pydantic import SecretStr
 
+from forecasting.config import load_settings
 from forecasting.db import PRICE_COLUMNS
 from forecasting.eodhd import API_URL, EodhdSource
 from forecasting.trading_calendar import CALENDAR_START, next_trading_day
@@ -24,6 +26,7 @@ APPLE_SPLIT_DAY = date(2020, 8, 31)
 APPLE_SPLIT_RATIO = 4.0
 # EODHD counts a request for the splits of a whole exchange as 100 calls:
 BULK_CALLS = 100
+NEW_YORK = ZoneInfo("America/New_York")
 
 pytestmark = pytest.mark.eodhd
 
@@ -82,6 +85,17 @@ def source(api_key: SecretStr) -> EodhdSource:
 
 
 @pytest.fixture(scope="module")
+def exchange_codes(api_key: SecretStr) -> dict[str, list[str]]:
+    """Map each ticker suffix EODHD lists to the exchange codes (MICs) it covers."""
+    _require_calls(api_key, 1)
+    exchanges = _get(api_key, "exchanges-list/")
+
+    return {
+        e["Code"]: e["OperatingMIC"].split(", ") for e in exchanges if e["OperatingMIC"]
+    }
+
+
+@pytest.fixture(scope="module")
 def apple_history(api_key: SecretStr, source: EodhdSource) -> pd.DataFrame:
     """Apple's daily price history, as far back as the key reaches."""
     # Apple's history and splits cost two calls:
@@ -131,9 +145,10 @@ def test_volumes_before_a_split_are_corrected_from_its_day(apple_history):
 def test_an_announced_split_is_listed_before_any_volume_holds_it(api_key, source):
     """A split for the next trading day is listed, yet the latest volume is as traded.
 
-    The latest volume is compared with EODHD's live quote, which is never corrected.
-    Only a split of at least 3-for-1 or 1-for-3 is used, so a corrected volume would
-    differ from the live one by that factor.
+    The latest volume is compared with EODHD's live quote, which is never corrected,
+    when both are from the same New York day. Only a split of at least 3-for-1 or
+    1-for-3 is used, so a corrected volume would differ from the live one by that
+    factor.
     """
     _require_calls(api_key, BULK_CALLS + 10)
     split_day = next_trading_day("XNYS", date.today())
@@ -148,6 +163,16 @@ def test_an_announced_split_is_listed_before_any_volume_holds_it(api_key, source
     else:
         pytest.skip(f"no US split of ratio 3 or more, or 1/3 or less, for {split_day}")
     recent = source.fetch_history(symbol, date.today() - timedelta(days=14)).quotes
-    latest = recent["volume"].iloc[-1]
-    live = _get(api_key, f"real-time/{symbol}")["volume"]
-    assert 0.5 <= latest / live <= 2
+    latest = recent.iloc[-1]
+    live = _get(api_key, f"real-time/{symbol}")
+    live_day = datetime.fromtimestamp(live["timestamp"], NEW_YORK).date()
+    if latest["day"] != live_day:
+        pytest.skip(f"latest daily volume from {latest['day']}, live from {live_day}")
+    assert 0.5 <= latest["volume"] / live["volume"] <= 2
+
+
+@pytest.mark.parametrize("stock", load_settings().securities, ids=lambda s: s.symbol)
+def test_each_stock_is_on_an_exchange_eodhd_lists_for_its_suffix(exchange_codes, stock):
+    """The exchange of each configured stock is one EODHD lists for its suffix."""
+    suffix = stock.symbol.rpartition(".")[2]
+    assert stock.exchange in exchange_codes[suffix]

@@ -127,6 +127,10 @@ and two indices: a seventh stock would need 23. A free key therefore runs one lo
 update per day; the welcome calls cover reruns and `make contract` in a member's first
 days.
 
+Once the welcome calls are spent, any other call before a load that day (`make
+contract`, a rerun) leaves it short: the load fails and stores nothing, and its new days
+follow with the next load.
+
 EODHD's daily prices include the current day while its session is still running (delayed
 by about 15 minutes), in the same form as a finished day. How such a row is handled:
 [Provisional closes](#provisional-closes).

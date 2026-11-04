@@ -89,7 +89,7 @@ acceptance: db
 # history, remaining calls or plan cannot support is skipped with its reason. Short
 # tracebacks never show the key.
 contract:
-	uv run --env-file .env pytest -n auto -m eodhd --tb=short
+	uv run --env-file .env pytest -n auto --dist loadscope -m eodhd --tb=short
 
 # Starts the API in the project image, rebuilt when the code changed, on
 # http://localhost:8000 (docs at /docs); returns once it answers.
