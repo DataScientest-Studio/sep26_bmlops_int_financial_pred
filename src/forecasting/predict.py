@@ -54,7 +54,7 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
 
     Args:
         engine: Engine of the project database.
-        settings: Settings; the model is read from `settings.model_dir`.
+        settings: Settings of this deployment; not read.
         symbol: Ticker of the security.
 
     Returns:

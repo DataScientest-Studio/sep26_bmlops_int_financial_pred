@@ -79,7 +79,6 @@ def settings(
         example_settings,
         database_url=database_url,
         replay_database_url=replay_url,
-        model_dir=tmp_path / example_settings.model_dir,
         dataset_dir=dataset_dir,
         dataset_remote=str(tmp_path / "dataset_remote"),
         securities=SECURITIES,

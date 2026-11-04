@@ -90,7 +90,6 @@ class Settings:
 
     Attributes:
         database_url: SQLAlchemy URL of the project database.
-        model_dir: Folder where trained models are saved.
         dataset_dir: Folder where DVC keeps the copies of the training datasets.
         dataset_remote: DVC remote where `dataset_version` pushes each copy.
         code_version: Git commit the image was built from, or "unknown".
@@ -108,7 +107,6 @@ class Settings:
     """
 
     database_url: str = field(repr=False)
-    model_dir: Path
     dataset_dir: Path
     dataset_remote: str
     code_version: str
@@ -154,8 +152,8 @@ def load_settings() -> Settings:
     """Read the settings from the environment and the files in config/.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    POSTGRES_DB, MODEL_DIR, HISTORY_START and REPLAY_START (a missing variable raises
-    KeyError); CODE_VERSION (defaults to "unknown").
+    POSTGRES_DB, HISTORY_START and REPLAY_START (a missing variable raises KeyError);
+    CODE_VERSION (defaults to "unknown").
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-003, scope=function)
@@ -222,7 +220,6 @@ def load_settings() -> Settings:
 
     return Settings(
         database_url=database_url.render_as_string(hide_password=False),
-        model_dir=Path(env["MODEL_DIR"]),
         dataset_dir=DATASET_DIR,
         dataset_remote=DATASET_REMOTE,
         code_version=env.get("CODE_VERSION", "unknown"),

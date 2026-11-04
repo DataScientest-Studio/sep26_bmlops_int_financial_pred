@@ -63,7 +63,7 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
 
     Args:
         engine: Engine of the project database.
-        settings: Settings; the model is saved under `settings.model_dir`.
+        settings: Settings of this deployment; not read.
         symbol: Ticker of the security.
 
     Returns:

@@ -296,7 +296,8 @@ Depends on: in brackets.
 - [ ] **5 Baseline training pipeline** (3; 4 for real data)
   - [x] `read_prices` reads the stored prices of one security
   - [ ] a training function builds the target (next-day change), trains, compares with
-    the persistence and mean-change baselines, saves the model under `MODEL_DIR`
+    the persistence and mean-change baselines, saves the model in the project's
+    `models/` folder
   - [ ] a prediction function returns the next-day forecast for one security
   - [ ] unit tests for feature building
   - [ ] the acceptance tests of REQ-MOD-001–003 pass
@@ -372,7 +373,7 @@ it works. Depends on: in brackets.
     build `make` did not start records the code version as `unknown`
   - [ ] every training run records its parameters, metrics, dataset version, code
     version and model (1)
-  - [ ] MLflow is the model store; the `models/` folder and `MODEL_DIR` are removed (1)
+  - [ ] MLflow is the model store; the `models/` folder is removed (1)
 - [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
   - [ ] one registered model per security
   - [ ] a new model becomes production only if it is better by the rule chosen in

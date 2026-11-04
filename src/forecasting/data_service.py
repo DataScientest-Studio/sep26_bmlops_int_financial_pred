@@ -38,6 +38,13 @@ def report_failure(request: Request, error: Exception) -> JSONResponse:
     The error still reaches the service's own log with its traceback.
 
     @relation(REQ-AUT-001, scope=function)
+
+    Args:
+        request: The request that failed; not read.
+        error: The error the load or replay raised.
+
+    Returns:
+        An answer with status 500 whose detail is the error's type and message.
     """
     reason = f"{type(error).__name__}: {error}"
 
@@ -49,6 +56,9 @@ def health() -> dict[str, str]:
     """Report that the service is running.
 
     @relation(REQ-AUT-003, scope=function)
+
+    Returns:
+        The status "ok".
     """
     return {"status": "ok"}
 
@@ -59,6 +69,9 @@ def load() -> LoadReport:
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-002, scope=function)
+
+    Returns:
+        The load's report.
     """
     return run_load()
 
@@ -67,8 +80,9 @@ def load() -> LoadReport:
 def replay() -> dict[str, date | None]:
     """Copy the next stored day into the replay database and answer with it.
 
-    Answers with no day when nothing is left to replay.
-
     @relation(REQ-DAT-003, scope=function)
+
+    Returns:
+        The replayed day under "day", or none when nothing is left to replay.
     """
     return {"day": run_replay()}
