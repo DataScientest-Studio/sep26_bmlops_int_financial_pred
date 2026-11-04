@@ -1,9 +1,9 @@
 """Fixtures shared by all tests.
 
-Tests use the settings of `.env.example`, which `make test` loads. Database tests
-need the local PostgreSQL server (`make db`) with the login from `.env.example`. Each
-pytest-xdist worker gets its own database, created from `db/init/`, so workers never
-share data.
+Tests use the settings of `.env.example`, which `make test` loads, and of the files in
+config/. Database tests need the local PostgreSQL server (`make db`) with the login
+from `.env.example`. Each pytest-xdist worker gets its own database, created from
+`db/init/`, so workers never share data.
 """
 
 from collections.abc import Iterator
@@ -24,7 +24,7 @@ from tests.fakes import INDICES, SECURITIES
 
 @pytest.fixture(scope="session")
 def example_settings() -> Settings:
-    """Settings from `.env.example`, which `make test` loads."""
+    """Settings from `.env.example`, which `make test` loads, and from config/."""
     return load_settings()
 
 
@@ -68,14 +68,17 @@ def engine(database_url: str) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def settings(example_settings: Settings, database_url: str, tmp_path: Path) -> Settings:
-    """Test settings on this worker's database, test symbols and own folders."""
+def settings(
+    example_settings: Settings, database_url: str, replay_url: str, tmp_path: Path
+) -> Settings:
+    """Test settings on this worker's databases, test symbols and own folders."""
     dataset_dir = tmp_path / "datasets"
     dataset_dir.mkdir()
 
     return replace(
         example_settings,
         database_url=database_url,
+        replay_database_url=replay_url,
         model_dir=tmp_path / example_settings.model_dir,
         dataset_dir=dataset_dir,
         dataset_remote=str(tmp_path / "dataset_remote"),

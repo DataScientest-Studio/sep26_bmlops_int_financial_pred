@@ -74,6 +74,7 @@
         {
           "refId": "A",
           "expr": "trading_days_behind",
+          "instant": true,
           "legendFormat": "{{symbol}}"
         }
       ]

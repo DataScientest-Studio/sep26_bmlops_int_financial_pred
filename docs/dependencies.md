@@ -40,4 +40,4 @@ The pipelines in `airflow/dags/` run in Airflow's own image, which holds none of
 | Package | What it does | Used for |
 |---|---|---|
 | requests | HTTP client library: sends requests to web services and reads their answers. | The pipelines' calls to the data service. |
-| pendulum | Dates and times with time zones. | The pipelines' schedule and the New York day. |
+| pendulum | Dates and times with time zones. | The pipelines' schedule and the day in the daily update's time zone. |

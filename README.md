@@ -30,13 +30,14 @@ yet.
 ├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
 ├── .dockerignore                what the project image is built from
 ├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the data service, Airflow, Prometheus, Grafana, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, model folder, final-price delay, first day of history, replay start and interval, EODHD key)
+├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, model folder, first day of history, replay start and interval, EODHD key)
 ├── airflow/
 │   └── dags/
-│       ├── daily_update.py      the daily update pipeline: one load on every weekday after the US close
+│       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
 │       ├── data_service_call.py  the call of the data service both pipelines make; a failed call fails the task with the reason the service answered
 │       └── replay.py            the replay pipeline: one replayed trading day per interval
 ├── config/
+│   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
 │   └── securities.toml          securities to forecast, with their exchange
 ├── db/
 │   ├── init/
@@ -66,7 +67,7 @@ yet.
 │   │   └── api.json             the dashboard "API" (Grafana reads it at start)
 │   └── provisioning/
 │       ├── alerting/
-│       │   └── alerts.yaml      the alert rules "API error rate" and "Data not fresh"
+│       │   └── alerts.yaml      the alert rules "API error rate", "Data not fresh" and "Daily update missed"
 │       ├── dashboards/          where Grafana finds the dashboards
 │       └── datasources/         Grafana's data source (Prometheus)
 ├── prometheus/
@@ -218,17 +219,22 @@ replay database to start over.
 Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on
 `localhost` at the port `AIRFLOW_PORT` from `.env`. Log in as `admin` with the password
 `AIRFLOW_ADMIN_PASSWORD` from `.env`. Airflow keeps its own database and login on the
-project's database server, both created on the first start, and it receives none of the
-project's settings apart from `FINAL_DELAY_MINUTES` and `REPLAY_INTERVAL_SECONDS`, never
-the EODHD key. Its tasks call the data service, which runs the load and the replay
-inside Docker and is not reachable from the host.
+project's database server, both created on the first start. Of the project's settings it
+receives only `REPLAY_INTERVAL_SECONDS` from `.env` and the folder `config/`, which it
+can read but not change; it never receives the EODHD key. Its tasks call the data
+service, which runs the load and the replay inside Docker and is not reachable from the
+host.
 
-The daily update pipeline (`daily_update`) runs one load on every weekday at 16:00 New
-York time plus `FINAL_DELAY_MINUTES`, the same load as `make update`. A failed run is
-not repeated, since a load uses the free tier's calls of the day; a run missed while
-Airflow was stopped is made up once if Airflow starts again on the same New York day,
-and skipped from the next day on; either way the next load fetches from the latest
-stored day on.
+The daily update pipeline (`daily_update`) runs one load on the days and at the time
+that `config/daily_update.toml` sets, the same load as `make update`. Its settings are
+in the table under [Monitoring settings](#monitoring-settings), since the API also uses
+them to count missed daily updates. The final delay (`final_delay_minutes`), how long
+after an exchange's close a fetched price counts as final, applies to every load, also
+`make update`. A failed run is not repeated, since a load uses the free tier's calls of
+the day; a run missed while Airflow was stopped is made up once if Airflow starts again
+on the same day in the time zone set in `config/daily_update.toml` (`timezone`), and
+skipped from the next day on; either way the next load fetches from the latest stored
+day on.
 
 The replay pipeline (`replay`) replays one trading day every `REPLAY_INTERVAL_SECONDS`
 seconds, the same replay as `make replay` (see [Replay](#replay)). Airflow refuses to
@@ -237,8 +243,8 @@ run is not made up, and a run that is still going delays the next one. Once the 
 stored day is replayed, each run is skipped: switch the pipeline off.
 
 Each pipeline announces its work, so that a pipeline waiting for new prices can start on
-it: the daily update after each load as the asset `prices`, also after one that found no
-new trading day, and the replay pipeline after each replayed day as the asset
+it: the daily update pipeline after each load as the asset `prices`, also after one that
+found no new trading day, and the replay pipeline after each replayed day as the asset
 `replay-prices`. The page lists both under "Assets". A skipped or failed run announces
 nothing.
 
@@ -291,10 +297,20 @@ they took and which status group (2xx, 4xx, 5xx) they got. The health check and
 number of trading days after the latest stored day that were final when the security's
 latest load ran; 0 means no trading day is behind. A security without a stored day or
 without a recorded load has no number. Every load records per security when it fetched
-it, also when it stored nothing, in the table `loads`. Prometheus collects the list
-regularly (see [Monitoring settings](#monitoring-settings)). No port is published for it
-on the host; its data lives in a Docker volume (`prometheus-data`) and survives
-restarts.
+it, also when it stored nothing, in the table `loads`.
+
+The list also has `daily_updates_missed`, one number for the whole system: how many
+scheduled daily updates since the latest recorded load of any security got no load
+within the load limit (`load_limit_minutes`), the longest a load may run; 0 means none
+was missed. The schedule is in `config/daily_update.toml`. The number is left out while
+the database cannot be read, before the first load is recorded, and while the replay
+database exists, since the member then switches the daily update pipeline off and the
+replay pipeline on. Each call of `/metrics` measures
+`trading_days_behind` and `daily_updates_missed` anew.
+
+Prometheus collects the list regularly (see
+[Monitoring settings](#monitoring-settings)). No port is published for it on the host;
+its data lives in a Docker volume (`prometheus-data`) and survives restarts.
 
 Prometheus also computes the error rate, the share of requests answered with a server
 error (5xx) over a recent window, and stores it as `api:error_ratio:rate5m`. The formula
@@ -315,37 +331,59 @@ keeps no volume of its own. The dashboard is read-only on the page: a change goe
 #### Alerts
 The alert rule "API error rate" fires when the error rate stays above its threshold for
 the whole wait. The alert rule "Data not fresh" fires, one alert per security, when the
-security's trading days behind stay above its threshold for the whole wait.
+security's trading days behind stay above its threshold for the whole wait. The alert
+rule "Daily update missed" fires when the number of missed daily updates stays above its
+threshold for the whole wait.
 
 In Grafana, open Alerting → Alert rules and look at the folder "Financial forecasting":
 the rules are listed there with their state; an alert that fires is listed as firing.
 
 #### Monitoring settings
-| Setting | Value | File |
-|---|---|---|
-| How often Prometheus collects the numbers | 15 seconds | `prometheus/prometheus.yml` (`scrape_interval`) |
-| How often Prometheus computes the error rate | 15 seconds | `prometheus/prometheus.yml` (`evaluation_interval`) |
-| Window of the error rate | 5 minutes | `prometheus/rules.yml` (`[5m]`); the name `api:error_ratio:rate5m` carries the window and is read in `grafana/dashboards/api.json` and `grafana/provisioning/alerting/alerts.yaml` |
-| How often Grafana checks the alert rules | 1 minute | `grafana/provisioning/alerting/alerts.yaml` (`interval`) |
-| "API error rate": threshold | above 5% (0.05) | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
-| "API error rate": wait | 5 minutes | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
-| "API error rate": without data | counts as OK | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
-| "API error rate": when Prometheus cannot be asked | shown as Error, not as firing | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
-| "Data not fresh": threshold | above 0 trading days | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
-| "Data not fresh": wait | none, fires at the first check | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
-| "Data not fresh": without data | counts as OK | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
-| "Data not fresh": when Prometheus cannot be asked | shown as Error, not as firing | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
-| "Trading days behind" panel: red from | 1 trading day | `grafana/dashboards/api.json` (`thresholds`) |
+| Setting | File |
+|---|---|
+| How often Prometheus collects the numbers | `prometheus/prometheus.yml` (`scrape_interval`) |
+| How often Prometheus computes the error rate | `prometheus/prometheus.yml` (`evaluation_interval`) |
+| Window of the error rate | `prometheus/rules.yml` (the range in the `rate(...)` expressions); the name `api:error_ratio:rate5m` carries the window and is read in `grafana/dashboards/api.json` and `grafana/provisioning/alerting/alerts.yaml` |
+| How often Grafana checks the alert rules | `grafana/provisioning/alerting/alerts.yaml` (`interval`) |
+| "API error rate": threshold | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
+| "API error rate": wait | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
+| "API error rate": without data | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
+| "API error rate": when Prometheus cannot be asked | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
+| "Data not fresh": threshold | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
+| "Data not fresh": wait | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
+| "Data not fresh": without data | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
+| "Data not fresh": when Prometheus cannot be asked | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
+| "Daily update missed": threshold | `grafana/provisioning/alerting/alerts.yaml` (`params`) |
+| "Daily update missed": wait | `grafana/provisioning/alerting/alerts.yaml` (`for`) |
+| "Daily update missed": without data | `grafana/provisioning/alerting/alerts.yaml` (`noDataState`) |
+| "Daily update missed": when Prometheus cannot be asked | `grafana/provisioning/alerting/alerts.yaml` (`execErrState`) |
+| Days the daily update runs on | `config/daily_update.toml` (`weekdays`) |
+| Time zone of the daily update | `config/daily_update.toml` (`timezone`) |
+| Time the final delay counts from: the daily update starts the final delay later | `config/daily_update.toml` (`start_after`) |
+| Load limit: how long a load may run, and when a daily update counts as missed | `config/daily_update.toml` (`load_limit_minutes`) |
+| Final delay after an exchange's close, for every load | `config/daily_update.toml` (`final_delay_minutes`) |
+| "Trading days behind" panel: red from | `grafana/dashboards/api.json` (`thresholds`) |
 
 The alert rules are team configuration and read-only on the Grafana page. A change goes
-into the file and into this table. Prometheus and Grafana read their files at start:
-`docker compose restart prometheus` or `docker compose restart grafana`.
+into the file. Prometheus and Grafana read their files at start:
+`docker compose restart prometheus` or `docker compose restart grafana`. A change to the
+files in `config/` reaches the daily update pipeline when Airflow next reads
+`airflow/dags/daily_update.py`, which it does regularly; the data service at its next
+load; each command when it next runs; the API after `docker compose restart api`.
+
+A value in `config/daily_update.toml` that is not allowed, such as a minute value
+outside its range or not a whole number, is refused, and the API and the data service
+then do not start, so a refused value also stops `docker compose restart api`. When
+`make api`, `make monitoring` or `make airflow` stops because a container exited,
+`docker compose logs api` (or `docker compose logs data`) shows the reason. The ranges
+are set in `src/forecasting/config.py`.
 
 #### Known limitations
-- Without data, both alert rules count as OK: "API error rate" while no request came,
+- Without data, every alert rule counts as OK: "API error rate" while no request came,
   "Data not fresh" while the database cannot be read and for a security without a stored
-  day or a recorded load. A database that cannot be read shows as server errors on the
-  API.
+  day or a recorded load, and "Daily update missed" while the database cannot be read,
+  before the first recorded load and while the replay database exists. A database that
+  cannot be read shows as server errors on the API.
 - A first server error after an API start is neither counted in the error rate nor shown
   in Grafana. The API creates the counter of a kind of request (route and status group)
   only when the first such request arrives, so Prometheus first collects it at 1, never

@@ -59,6 +59,7 @@ Operation of the running system:
 
 - Prediction latency (95th percentile) and error rate of the API.
 - Data freshness: trading days after the latest stored day that were final when the security's latest load ran.
+- Missed daily updates: scheduled daily updates after the latest load whose load limit, the longest a load may run, has passed; left out while the replay database exists.
 - Drift share: fraction of monitored features flagged as drifted in the latest check.
 - Training runs: duration and outcome (succeeded, promoted, kept as candidate).
 

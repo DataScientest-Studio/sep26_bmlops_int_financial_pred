@@ -14,7 +14,6 @@ RUN uv sync --locked --no-dev --no-install-project
 # The package build reads README.md as the project's description (pyproject.toml).
 COPY README.md ./
 COPY src/ src/
-COPY config/ config/
 COPY db/init/ db/init/
 RUN uv sync --locked --no-dev
 ENV PATH="/app/.venv/bin:$PATH"

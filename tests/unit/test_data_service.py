@@ -17,6 +17,16 @@ def test_health_reports_running_service():
     assert response.json() == {"status": "ok"}
 
 
+def test_data_service_refuses_to_start_with_a_refused_setting(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A setting the settings refuse stops the data service's start."""
+    monkeypatch.setenv("HISTORY_START", "1979-12-31")
+
+    with pytest.raises(ValueError, match="HISTORY_START"), TestClient(data_service.app):
+        pass
+
+
 def test_load_answers_with_the_load_report(monkeypatch: pytest.MonkeyPatch):
     """A load answers with the report of the load it ran."""
     report = LoadReport(stored=3, replaced=1, rejected=0, missing=2)

@@ -1,4 +1,3 @@
-# README.md, table "Monitoring settings", lists the values below; change both together.
 global:
   # How often Prometheus collects the numbers.
   scrape_interval: 15s

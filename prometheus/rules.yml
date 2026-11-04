@@ -1,5 +1,4 @@
 # Formulas Prometheus computes regularly and stores under a new name.
-# README.md, table "Monitoring settings", lists the values below; change both together.
 groups:
   - name: api
     rules:

@@ -14,8 +14,8 @@ x-project: &project
     MLFLOW_TRACKING_URI: http://mlflow:5000
     AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
     AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
-  # A missing models or datasets folder stops the start, so Docker never creates
-  # it as root.
+  # The team's config folder is read live, never written; a missing models or datasets
+  # folder stops the start, so Docker never creates it as root.
   volumes:
     - type: bind
       source: ./models
@@ -27,6 +27,10 @@ x-project: &project
       target: /app/datasets
       bind:
         create_host_path: false
+    - type: bind
+      source: ./config
+      target: /app/config
+      read_only: true
   depends_on:
     db:
       condition: service_healthy
@@ -35,7 +39,8 @@ x-project: &project
     object-store:
       condition: service_healthy
 
-# Settings of the Airflow services: only what Airflow and its pipelines read.
+# Settings of the Airflow services: what Airflow and its pipelines read, never the
+# EODHD key.
 x-airflow: &airflow
   image: apache/airflow:3.3.2-python3.12
   environment:
@@ -49,12 +54,12 @@ x-airflow: &airflow
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
     AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:?set in .env}
-    # Read by the daily update pipeline.
-    FINAL_DELAY_MINUTES: ${FINAL_DELAY_MINUTES:?set in .env}
     # Read by the replay pipeline.
     REPLAY_INTERVAL_SECONDS: ${REPLAY_INTERVAL_SECONDS:?set in .env}
   volumes:
     - ./airflow/dags:/opt/airflow/dags:ro
+    # Read by the daily update pipeline; no pipeline reads securities.toml.
+    - ./config:/opt/airflow/project-config:ro
     - airflow-logs:/opt/airflow/logs
 
 services:

@@ -1,6 +1,5 @@
 apiVersion: 1
 
-# README.md, table "Monitoring settings", lists the values below; change both together.
 groups:
   - orgId: 1
     name: api
@@ -60,3 +59,30 @@ groups:
         execErrState: Error
         annotations:
           summary: "{{ $labels.symbol }} is trading days behind its latest load."
+
+      - uid: daily-update-missed
+        title: Daily update missed
+        # The rule fires when the step "threshold" is true.
+        condition: threshold
+        data:
+          - refId: updates_missed
+            datasourceUid: prometheus
+            relativeTimeRange: {from: 300, to: 0}
+            model:
+              expr: daily_updates_missed
+              instant: true
+          - refId: threshold
+            datasourceUid: __expr__
+            model:
+              type: threshold
+              expression: updates_missed
+              # The number of missed daily updates above which the rule fires.
+              conditions: [{evaluator: {type: gt, params: [0]}}]
+        # Fires at the first check: a daily update counts as missed only once its load
+        # limit has passed.
+        for: 0s
+        # No number of missed daily updates means nothing to measure, not a fault.
+        noDataState: OK
+        execErrState: Error
+        annotations:
+          summary: A scheduled daily update passed its load limit without a load.

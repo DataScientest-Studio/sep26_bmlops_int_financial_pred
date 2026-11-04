@@ -1,14 +1,33 @@
 """Data service: runs the load and the replay for the scheduled pipelines."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import date
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from forecasting.commands import run_load, run_replay
+from forecasting.config import load_settings
 from forecasting.load import LoadReport
 
-app = FastAPI(title="Financial forecasting data service")
+
+@asynccontextmanager
+async def read_settings_at_start(app: FastAPI) -> AsyncIterator[None]:
+    """Read the settings at start, so a refused setting stops the start.
+
+    @relation(REQ-AUT-003, scope=function)
+
+    Args:
+        app: The application being started; not read.
+    """
+    load_settings()
+    yield
+
+
+app = FastAPI(
+    title="Financial forecasting data service", lifespan=read_settings_at_start
+)
 
 
 @app.exception_handler(Exception)

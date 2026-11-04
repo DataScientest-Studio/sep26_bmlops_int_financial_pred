@@ -1,7 +1,8 @@
-"""Daily update: loads the new trading days on every weekday after the US close."""
+"""Daily update: loads the new trading days as config/daily_update.toml schedules."""
 
-import os
-from datetime import timedelta
+import tomllib
+from datetime import time, timedelta
+from pathlib import Path
 
 import pendulum
 from airflow.sdk import Asset, dag, task
@@ -15,21 +16,26 @@ LOAD_URL = "http://data:8000/load"
 # Announced after each load, so a pipeline waiting for new prices starts on it.
 PRICES = Asset("prices")
 
-# The US exchanges close at 16:00 New York time.
-NEW_YORK = "America/New_York"
-US_CLOSE_HOUR = 16
+# The project's config/daily_update.toml, mounted read-only by compose.yaml.
+DAILY_UPDATE_FILE = Path("/opt/airflow/project-config/daily_update.toml")
 
-# A load makes at most 20 EODHD calls of at most 60 seconds each.
-LOAD_TIMEOUT = timedelta(minutes=30)
+with DAILY_UPDATE_FILE.open("rb") as file:
+    schedule = tomllib.load(file)
+timezone = schedule["timezone"]
+load_limit = timedelta(minutes=schedule["load_limit_minutes"])
 
-# The load starts FINAL_DELAY_MINUTES after the close, so the day's closes are final;
-# minutes past 60 move on to the next hour (a delay of 60 gives 17:00).
-hour, minute = divmod(US_CLOSE_HOUR * 60 + int(os.environ["FINAL_DELAY_MINUTES"]), 60)
+# The load starts final_delay_minutes after start_after, so the day's closes are final;
+# minutes past 60 move on to the next hour.
+start = time.fromisoformat(schedule["start_after"])
+delay = schedule["final_delay_minutes"]
+hour, minute = divmod(start.hour * 60 + start.minute + delay, 60)
+# Cron takes the days as the same numbers, separated by commas.
+days = ",".join(str(day) for day in schedule["weekdays"])
 
 
 @dag(
-    schedule=CronTriggerTimetable(f"{minute} {hour} * * 1-5", timezone=NEW_YORK),
-    start_date=pendulum.datetime(2026, 10, 1, tz=NEW_YORK),
+    schedule=CronTriggerTimetable(f"{minute} {hour} * * {days}", timezone=timezone),
+    start_date=pendulum.datetime(2026, 10, 1, tz=timezone),
     catchup=False,
     max_active_runs=1,
     default_args={"retries": 0},
@@ -41,16 +47,16 @@ def daily_update():
     @relation(REQ-DAT-002, scope=function)
     """
 
-    @task(execution_timeout=LOAD_TIMEOUT, outlets=[PRICES])
+    @task(execution_timeout=load_limit, outlets=[PRICES])
     def load(dag_run=None) -> dict:
         """Runs one load and returns its report; skips a run due on an earlier day."""
-        # Airflow makes up the latest missed run when it starts; on a later New York
-        # day it is skipped, so at most one load runs per day.
-        due_day = pendulum.instance(dag_run.run_after).in_timezone(NEW_YORK).date()
-        if due_day != pendulum.now(NEW_YORK).date():
+        # Airflow makes up the latest missed run when it starts; on a later day in the
+        # schedule's time zone it is skipped, so at most one load runs per day.
+        due_day = pendulum.instance(dag_run.run_after).in_timezone(timezone).date()
+        if due_day != pendulum.now(timezone).date():
             raise AirflowSkipException(f"Due on {due_day}; a missed run is skipped.")
 
-        return post_to_data_service(LOAD_URL, LOAD_TIMEOUT)
+        return post_to_data_service(LOAD_URL, load_limit)
 
     load()
 

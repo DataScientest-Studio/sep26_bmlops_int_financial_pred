@@ -5,7 +5,6 @@
 !.python-version
 !README.md
 !src/
-!config/
 !db/init/
 !tools/run-as-owner.sh
 **/__pycache__/

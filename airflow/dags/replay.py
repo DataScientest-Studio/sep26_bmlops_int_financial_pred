@@ -21,7 +21,7 @@ SHORTEST_INTERVAL_SECONDS = 10
 LONGEST_INTERVAL_SECONDS = 60
 
 # The first run copies every stored day up to REPLAY_START, so it takes longest.
-REPLAY_TIMEOUT = timedelta(minutes=30)
+REPLAY_LIMIT = timedelta(minutes=30)
 
 # Seconds from the start of one replayed day to the next; a value outside the limits
 # stops Airflow from loading this pipeline.
@@ -47,10 +47,10 @@ def replay():
     @relation(REQ-DAT-003, scope=function)
     """
 
-    @task(execution_timeout=REPLAY_TIMEOUT, outlets=[REPLAY_PRICES])
+    @task(execution_timeout=REPLAY_LIMIT, outlets=[REPLAY_PRICES])
     def replay_day() -> dict:
         """Replays the next trading day; skips once nothing is left."""
-        report = post_to_data_service(REPLAY_URL, REPLAY_TIMEOUT)
+        report = post_to_data_service(REPLAY_URL, REPLAY_LIMIT)
         if report["day"] is None:
             raise AirflowSkipException("Nothing left to replay; pause the pipeline.")
 

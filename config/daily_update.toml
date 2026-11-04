@@ -1,0 +1,21 @@
+# When the daily update pipeline loads the new trading days, and when a fetched price
+# counts as final, for every load. The values are for the team to agree. The API reads
+# them too, to count missed daily updates.
+
+# Days the load runs on: Monday = 1 to Sunday = 7, each day once.
+weekdays = [1, 2, 3, 4, 5]
+# Time zone of the weekdays and of start_after.
+timezone = "America/New_York"
+# Close of the US exchanges; the load starts final_delay_minutes later, so the day's
+# closes are final.
+start_after = "16:00"
+# Longest a load may run, in whole minutes: at least as long as a load's EODHD calls
+# may take (TIMEOUT in src/forecasting/eodhd.py; the calls per security and per index
+# in load_history, src/forecasting/load.py; the securities and indices in
+# config/securities.toml). A scheduled daily update with no load by then counts as
+# missed. Its range is set in src/forecasting/config.py.
+load_limit_minutes = 30
+# Whole minutes after an exchange's close from which a fetched price is final, for every
+# load. Its range and the reasons for it are in src/forecasting/config.py. Raising it
+# can make the latest stored day provisional again; the next load then replaces it.
+final_delay_minutes = 25

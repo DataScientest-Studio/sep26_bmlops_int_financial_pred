@@ -1,13 +1,13 @@
 """Integration tests of the numbers the API reports at `/metrics`."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 from prometheus_client.parser import text_string_to_metric_families
 from sqlalchemy import make_url, text
 
 from forecasting.api.dependencies import get_engine
-from forecasting.db import connect
+from forecasting.db import connect, create_database
 from forecasting.load import load_history
 from tests.fakes import INDICES, SECURITIES, standard_source
 
@@ -25,6 +25,16 @@ def _values_by_label(metrics_text: str, name: str, label: str) -> dict[str, floa
         for sample in family.samples
         if sample.name == name
     }
+
+
+def _values(metrics_text: str, name: str) -> list[float]:
+    """Return the values under one name in the `/metrics` text."""
+    return [
+        sample.value
+        for family in text_string_to_metric_families(metrics_text)
+        for sample in family.samples
+        if sample.name == name
+    ]
 
 
 def test_metrics_count_a_request(client):
@@ -97,3 +107,42 @@ def test_metrics_without_a_recorded_load_report_no_trading_days_behind(
     response = client.get("/metrics")
     assert response.status_code == 200
     assert _values_by_label(response.text, "trading_days_behind", "symbol") == {}
+
+
+def test_metrics_after_a_load_just_now_count_no_missed_daily_update(
+    client, engine, settings
+):
+    """A load recorded just now leaves no scheduled daily update missed."""
+    source = standard_source()
+    source.fetched_at = datetime.now(UTC)
+    load_history(
+        engine,
+        source,
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert _values(response.text, "daily_updates_missed") == [0.0]
+
+
+def test_metrics_while_the_replay_database_exists_report_no_missed_daily_updates(
+    client, engine, settings
+):
+    """While the replay database exists, missed daily updates are left out."""
+    source = standard_source()
+    source.fetched_at = datetime.now(UTC)
+    load_history(
+        engine,
+        source,
+        SECURITIES,
+        INDICES,
+        settings.final_delay,
+        settings.history_start,
+    )
+    create_database(settings.replay_database_url)
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert _values(response.text, "daily_updates_missed") == []

@@ -36,6 +36,7 @@ the table.
 | Monitoring | Evidently for drift; Prometheus and Grafana for the metrics and the dashboard, API usage included | Coach feedback | Oct 22, 2026 6) | REQ-MON-001–005 |
 | Versioning | every training run records the model, the version of the dataset it trained on and the commit of the code it ran, or `unknown` for an image `make` did not build | Coach feedback | Oct 22, 2026 6) | REQ-MOD-004, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) items 3 and 5 |
 | Drift reports | stored in MLflow with the run they belong to; no Evidently UI (can be added later) | Decided (Tobias) | Nov 2, 2026 7) | REQ-MON-001–002 |
+| Daily update schedule | the schedule and the final delay are team configuration in `config/daily_update.toml`, read by the pipeline and the API; the values are checked against ranges set in `src/forecasting/config.py`, and a refused value stops the start of the API and the data service | Decided (Tobias) | Nov 4, 2026 8) | [Provisional closes](#provisional-closes) (final delay), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) (schedule settings) |
 
 1\) As presented: sep26_bmlops_int_financial_pred @ Mon Oct 12, 2026 12pm - 12:30pm
 (CEST).
@@ -52,6 +53,8 @@ the table.
 coordinator, Oct 22, 2026.
 
 7\) Decided by Tobias as coordinator, Nov 2, 2026.
+
+8\) Decided by Tobias as coordinator, Nov 4, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private
@@ -131,11 +134,12 @@ by about 15 minutes), in the same form as a finished day. How such a row is hand
 During a running session the latest price stands in for the close. Each stored row
 carries the time it was fetched; a row is final once it was fetched a set delay after
 its exchange's close (trading calendar, early closes included; the delay,
-`FINAL_DELAY_MINUTES`, covers EODHD's 15 minutes and the closing auction). A later fetch
-replaces a provisional row and never a final one. Training uses final rows only; a
-forecast may start from a provisional close and then says so: the response gives the
-close it starts from and when that price was fetched. A load during a session stores
-that day as provisional, and the next load replaces it with the final close.
+`final_delay_minutes` in `config/daily_update.toml`, covers EODHD's 15 minutes and the
+closing auction). A later fetch replaces a provisional row and never a final one.
+Training uses final rows only; a forecast may start from a provisional close and then
+says so: the response gives the close it starts from and when that price was fetched. A
+load during a session stores that day as provisional, and the next load replaces it with
+the final close.
 
 ### Close prices
 the database stores prices as they printed — open, high, low, close and volume as traded
@@ -409,19 +413,21 @@ it works. Depends on: in brackets.
     admin user, whose password is set in `.env`
   - [x] each task calls a service built from the project image over the Compose network,
     so Airflow's own image holds none of the project's packages and needs no access to
-    Docker; Airflow receives only the settings its pipelines read, never the EODHD key
+    Docker; Airflow receives only the settings its pipelines read and the folder
+    `config/`, never the EODHD key
   - [x] data service: `POST /load` runs the load and answers with its report,
     `POST /replay` copies the next day and answers with it (none when nothing is left);
     reachable only inside Compose
-  - [x] daily update pipeline: one load on weekdays at 16:00 New York time plus
-    `FINAL_DELAY_MINUTES`; never retried, since one load uses the free tier's day
+  - [x] daily update pipeline: one load on the days and at the time that
+    `config/daily_update.toml` sets (`start_after` plus `final_delay_minutes`); never
+    retried, since one load uses the free tier's day
   - [x] replay pipeline: one replayed day every `REPLAY_INTERVAL_SECONDS` seconds
   - [x] both pipelines start paused, the operator unpauses one of them; neither catches
     up on missed runs, and each runs once at a time
-  - [x] both pipelines announce their work: the daily update after each load as the
-    asset `prices`, also after one that found no new trading day; the replay pipeline
-    after each replayed day as the asset `replay-prices`; a skipped or failed run
-    announces nothing
+  - [x] both pipelines announce their work: the daily update pipeline after each load as
+    the asset `prices`, also after one that found no new trading day; the replay
+    pipeline after each replayed day as the asset `replay-prices`; a skipped or failed
+    run announces nothing
   - [ ] training pipeline: starts on either `prices` or `replay-prices` (at most one run
     at a time, no catch-up, starts paused) and calls `POST /training` on the API for
     each configured security (`airflow-scheduler` depends on `api`, so `make airflow`
@@ -450,8 +456,10 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
   with the rows it trains on, before it trains; MLflow records the id with the run.
 - Settings: MLflow page port (`MLFLOW_PORT`), evaluation window (its default is chosen
   with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port
-  (`AIRFLOW_PORT`). The daily update's time follows from the US close and
-  `FINAL_DELAY_MINUTES`.
+  (`AIRFLOW_PORT`). The daily update's days (`weekdays`), time zone (`timezone`), the
+  time the final delay counts from (`start_after`) and load limit
+  (`load_limit_minutes`), and the final delay (`final_delay_minutes`), are set in
+  `config/daily_update.toml`.
 - Code version: the commit the project image was built from; `unknown` when `make` did
   not build it.
 
@@ -491,7 +499,7 @@ in brackets.
 - [ ] **6 Alerts** (REQ-MON-004, REQ-MON-005)
   - [x] Grafana raises an alert when the API's error rate crosses its configured
     threshold (2; REQ-MON-004)
-  - [ ] Grafana raises an alert when a security is behind by a trading day that was
+  - [x] Grafana raises an alert when a security is behind by a trading day that was
     final when the latest load ran, or when the daily update is missed (2; REQ-MON-004)
   - [ ] an alert configured to start training calls a webhook that starts the training
     pipeline (1; REQ-MON-005)
