@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from forecasting.evaluate import evaluate
-from forecasting.features import build_features, build_target
+from forecasting.features import build_features, build_target, correct_for_splits
 from forecasting.load import load_history
 from forecasting.train import train
 from tests.fakes import SECURITIES, price_history, standard_source
@@ -22,6 +22,15 @@ def test_target_is_next_day_close_to_close_change():
     assert pd.isna(target.iloc[2])
 
 
+def test_target_across_a_split_day_is_the_real_change():
+    """REQ-MOD-001: closes corrected for splits give the real change across a split."""
+    prices = price_history("XNYS", "2026-10-05", "2026-10-06", seed=1)
+    prices["close"] = [100.0, 26.0]
+    splits = pd.DataFrame({"day": [prices["day"].iloc[1]], "ratio": [4.0]})
+    target = build_target(correct_for_splits(prices, splits))
+    assert target.iloc[0] == pytest.approx(0.04)
+
+
 def test_evaluation_scores_model_and_both_baselines_on_same_days():
     """REQ-MOD-002: persistence and mean change are scored next to the model."""
     actual = pd.Series([0.02, -0.01, 0.01])
@@ -29,9 +38,15 @@ def test_evaluation_scores_model_and_both_baselines_on_same_days():
     training_target = pd.Series([0.0, 0.01])
     result = evaluate(actual, predicted, training_target)
     assert result.days == 3
-    assert result.persistence.mae == pytest.approx(0.04 / 3)
-    assert result.mean_change.mae == pytest.approx(0.035 / 3)
-    assert result.model.mae == pytest.approx(0.01)
+    assert vars(result.model) == pytest.approx(
+        {"mae": 0.01, "skill": 0.25, "directional_accuracy": 2 / 3}
+    )
+    assert vars(result.persistence) == pytest.approx(
+        {"mae": 0.04 / 3, "skill": 0.0, "directional_accuracy": 0.0}
+    )
+    assert vars(result.mean_change) == pytest.approx(
+        {"mae": 0.035 / 3, "skill": 0.125, "directional_accuracy": 2 / 3}
+    )
 
 
 def test_features_of_a_day_ignore_later_prices():
