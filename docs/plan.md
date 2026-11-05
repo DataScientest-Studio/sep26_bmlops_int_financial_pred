@@ -18,6 +18,7 @@ the table.
 | Continuous integration | every push runs `make lint` and `make test` on GitHub | Built | Oct 12, 2026 1) | [Continuous integration](#continuous-integration) |
 | Data source | EODHD, free tier (20 calls per day, 1 year of history); each member uses their own free key; `make load` fills a new database, `make update` adds the new trading days | Agreed | Oct 12, 2026 1) | [Data source](#data-source) |
 | Close prices | prices stored as they printed; splits and dividends in tables of their own | Agreed | Oct 12, 2026 1) | [Close prices](#close-prices) |
+| Model inputs | the model's inputs and target are built from prices and volumes corrected for splits; dividends are not corrected | Decided (Tobias) | Nov 5, 2026 9) | [Close prices](#close-prices) |
 | Package and login | Python package `forecasting`; development login `admin`/`admin` in `.env.example`, for local use only | Built | Oct 12, 2026 1) | — |
 | Model serving | FastAPI; BentoML is not used | Coach feedback | Oct 15, 2026 2) | — |
 | Roadmap | milestones and phase plans as written in this plan | Decided (Tobias) | Oct 19, 2026 3) | [Roadmap](#roadmap) |
@@ -57,6 +58,9 @@ coordinator, Oct 22, 2026.
 
 8\) Decided by Tobias as coordinator, Nov 4, 2026.
 
+9\) Decided by Tobias as coordinator, Nov 5, 2026: the model's inputs, corrected for
+splits.
+
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private
 database, filled only from EODHD with their own key: `make load` once, `make update`
@@ -93,7 +97,7 @@ tests of phase 1 are in `tests/acceptance/`; those of phases 2 and 3 are written
 each phase starts.
 
 ### Continuous integration
-every push runs the style and type checks and the unit tests on GitHub
+Every push runs the style and type checks and the unit tests on GitHub
 (`.github/workflows/ci.yaml`, the same `make lint` and `make test` as on our machines);
 a failed run emails the person who pushed. `main` in the course repo refuses deletion
 and force pushes; work from a member's own branch reaches it through a pull request,
@@ -147,17 +151,19 @@ load during a session stores that day as provisional, and the next load replaces
 the final close.
 
 ### Close prices
-the database stores prices as they printed — open, high, low, close and volume as traded
+The database stores prices as they printed — open, high, low, close and volume as traded
 that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as
-events in tables of their own; the model's inputs correct prices and volumes for them
-when the inputs are built. EODHD delivers volume already corrected for each split it has
-applied; a split it lists for a day after the last delivered day is not yet applied. The
-load reverses the correction with the split ratios it fetches in the same run (each
-day's volume divided by the ratios of all later splits up to the last delivered day).
-When on a split's own day EODHD applies it (before the session opens, during it, or only
-after the close) is unchecked; it is checked when a reference security next splits.
-EODHD keeps closes as printed and multiplies the volume before a split by its ratio; the
-splits API delivers each ratio as text, for example `4.000000/1.000000`.
+events in tables of their own; the model's inputs and target are built from prices and
+volumes corrected for splits (a split counts from its own day on, once a stored day on
+or after it exists); dividends are not corrected. EODHD delivers volume already
+corrected for each split it has applied; a split it lists for a day after the last
+delivered day is not yet applied. The load reverses the correction with the split ratios
+it fetches in the same run (each day's volume divided by the ratios of all later splits
+up to the last delivered day). When on a split's own day EODHD applies it (before the
+session opens, during it, or only after the close) is unchecked; it is checked when a
+reference security next splits. EODHD keeps closes as printed and multiplies the volume
+before a split by its ratio; the splits API delivers each ratio as text, for example
+`4.000000/1.000000`.
 
 ### Object store
 Model files and dataset versions are kept in an S3-compatible object store that runs in

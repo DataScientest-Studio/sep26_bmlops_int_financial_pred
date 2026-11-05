@@ -21,6 +21,8 @@ READ_PRICES = text(
     " WHERE symbol = :symbol ORDER BY day"
 )
 
+READ_SPLITS = text("SELECT day, ratio FROM splits WHERE symbol = :symbol ORDER BY day")
+
 READ_LATEST_DAYS = text("SELECT symbol, max(day) FROM prices GROUP BY symbol")
 
 READ_LATEST_LOADS = text("SELECT symbol, fetched_at FROM loads")
@@ -131,6 +133,26 @@ def read_prices(engine: Engine, symbol: str) -> pd.DataFrame:
         prices[column] = prices[column].astype(float)
 
     return prices
+
+
+def read_splits(engine: Engine, symbol: str) -> pd.DataFrame:
+    """Read the stored splits of one security, oldest first.
+
+    @relation(REQ-MOD-001, scope=function)
+
+    Args:
+        engine: Engine of the project database.
+        symbol: Ticker of the security.
+
+    Returns:
+        One row per split with the columns in `SPLIT_COLUMNS`.
+    """
+    with engine.connect() as connection:
+        splits = pd.read_sql(READ_SPLITS, connection, params={"symbol": symbol})
+    # PostgreSQL numeric arrives as decimal; the model needs float.
+    splits["ratio"] = splits["ratio"].astype(float)
+
+    return splits
 
 
 def read_latest_days(engine: Engine) -> dict[str, date]:

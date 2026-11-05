@@ -195,7 +195,7 @@ TAGS: phase-1
 VERIFICATION: Test
 TITLE: Forecast target
 STATEMENT: >>>
-The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day. It is trained on final closes only.
+The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day, with closes corrected for splits. It is trained on final closes only.
 <<<
 
 [REQUIREMENT]

@@ -128,7 +128,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day. It is trained on final closes only.
+**Statement**: The model predicts the close-to-close change of a configured security from the latest trading day to the next trading day, with closes corrected for splits. It is trained on final closes only.
 
 ### Baselines
 
