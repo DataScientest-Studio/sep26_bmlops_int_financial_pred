@@ -49,6 +49,7 @@ def predict_endpoint(
     """
     _refuse_unknown(request.symbol, settings)
     forecast = predict(engine, settings, request.symbol)
+
     return ForecastResponse(**vars(forecast))
 
 
@@ -64,9 +65,11 @@ def training_endpoint(
     """
     _refuse_unknown(request.symbol, settings)
     result = train(engine, settings, request.symbol)
+
     return TrainingResponse(
         symbol=result.symbol,
         model_version=result.model_version,
+        promoted=result.promoted,
         evaluation_days=result.evaluation.days,
         model_mae=result.evaluation.model.mae,
         persistence_mae=result.evaluation.persistence.mae,

@@ -15,8 +15,8 @@ Group project of the DataScientest MLOps bootcamp (sep26 cohort).
 Under construction. Loading prices, splits and dividends from EODHD works (`make load`,
 `make update`), and so does replaying stored history day by day (`make replay`), both
 also on a schedule in Airflow (`make airflow`). The API reports numbers about its own
-use, shown in Grafana (`make monitoring`). Training, forecasts and the app are not built
-yet.
+use, shown in Grafana (`make monitoring`). Training and the forecast work as commands
+(`make train`, `make predict`); the app is not built yet.
 
 ## Project structure
 ```
@@ -30,7 +30,7 @@ yet.
 ├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
 ├── .dockerignore                what the project image is built from
 ├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the data service, Airflow, Prometheus, Grafana, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, model folder, first day of history, replay start and interval, EODHD key)
+├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, MLflow address for commands run on this machine, first day of history, replay start and interval, EODHD key)
 ├── airflow/
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
@@ -38,7 +38,8 @@ yet.
 │       └── replay.py            the replay pipeline: one replayed trading day per interval
 ├── config/
 │   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
-│   └── securities.toml          securities to forecast, with their exchange
+│   ├── securities.toml          securities to forecast, with their exchange
+│   └── training.toml            training: how many of the latest days are held back to score a model
 ├── db/
 │   ├── init/
 │   │   ├── dividends.sql        creates the dividends table where it is missing
@@ -81,7 +82,6 @@ yet.
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
 ├── datasets/                    copies of the training datasets with their version records, kept by DVC (gitignored)
-├── models/                      trained models, written by the commands and the API in Docker (gitignored)
 ├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
@@ -107,7 +107,7 @@ yet.
 │   └── fakes.py                 stand-in data source with generated prices
 └── tools/
     ├── export-requirements.sh   regenerates docs/requirements.md
-    └── run-as-owner.sh          starts the project image's commands, API and data service as the owner of models/
+    └── run-as-owner.sh          starts the project image's commands, API and data service as the owner of datasets/
 ```
 
 ## Setup
@@ -141,10 +141,11 @@ reload. A change to a table that exists takes effect only on an empty volume
 `make predict` and `make api` run in the project image (`Dockerfile`), with the packages
 pinned in `uv.lock` and the settings of `.env`. Each rebuilds the image when the code
 changed and starts the database, the object store and the MLflow server first if they
-are not running. Trained models are kept in `models/` of the project folder and never
-committed; the containers run as the owner of that folder, so the files belong to you.
-Copies of the training datasets are kept the same way in `datasets/`.
-`docker compose logs api` shows the API's output, errors included.
+are not running. Trained models are recorded in MLflow (see
+[Model tracking](#model-tracking)). Copies of the training datasets are kept in
+`datasets/` of the project folder and never committed; the containers run as the owner
+of that folder, so the files belong to you. `docker compose logs api` shows the API's
+output, errors included.
 
 | Command | Effect |
 |---|---|
@@ -154,8 +155,8 @@ Copies of the training datasets are kept the same way in `datasets/`.
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
 | `make replay-reset` | delete the replay database; the next `make replay` starts over from `REPLAY_START` |
-| `make train` | train and save a model for each configured security on its final closes, holding back the latest `EVALUATION_DAYS` for scoring; prints its scores next to both baselines |
-| `make predict` | print the newest model's forecast of the next trading day for each configured security |
+| `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
+| `make predict` | print the production model's forecast of the next trading day for each configured security |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | start the database, then run the black-box tests of the requirements and the integration tests against the database; the passed count shows progress |
@@ -277,6 +278,11 @@ its own login (`MLFLOW_DB_PASSWORD` in `.env`), both created on the first start,
 stores the model files in the object store (see [Object store](#object-store)). The API
 and the project commands reach the server inside Docker at `http://mlflow:5000`.
 
+Each configured security has the registered model `forecast-<symbol>` (for example
+`forecast-AAPL.US`). Every training run is recorded, and its model is a new version of
+that registered model; the version with the alias `production` is the one `make predict`
+uses.
+
 ### Object store
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) runs in Docker (`object-store`) as
 an S3-compatible object store for files that do not belong in PostgreSQL: MLflow's model
@@ -371,12 +377,12 @@ files in `config/` reaches the daily update pipeline when Airflow next reads
 `airflow/dags/daily_update.py`, which it does regularly; the data service at its next
 load; each command when it next runs; the API after `docker compose restart api`.
 
-A value in `config/daily_update.toml` that is not allowed, such as a minute value
-outside its range or not a whole number, is refused, and the API and the data service
-then do not start, so a refused value also stops `docker compose restart api`. When
-`make api`, `make monitoring` or `make airflow` stops because a container exited,
-`docker compose logs api` (or `docker compose logs data`) shows the reason. The ranges
-are set in `src/forecasting/config.py`.
+A value in `config/daily_update.toml` or `config/training.toml` that is not allowed,
+such as a minute value outside its range or not a whole number, is refused, and the
+commands, the API and the data service then do not start, so a refused value also stops
+`docker compose restart api`. When `make api`, `make monitoring` or `make airflow` stops
+because a container exited, `docker compose logs api` (or `docker compose logs data`)
+shows the reason. The ranges are set in `src/forecasting/config.py`.
 
 #### Known limitations
 - Without data, every alert rule counts as OK: "API error rate" while no request came,

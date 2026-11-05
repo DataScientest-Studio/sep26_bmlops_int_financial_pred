@@ -1,4 +1,4 @@
-# Securities the system loads, trains and forecasts; the list is for the team to agree.
+# Securities the system loads, trains and forecasts.
 # symbol: ticker as the data source names it; exchange: MIC of its exchange.
 
 [[securities]]

@@ -18,6 +18,7 @@ from forecasting.trading_calendar import CALENDAR_START
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 SECURITIES_FILE = PROJECT_DIR / "config" / "securities.toml"
 DAILY_UPDATE_FILE = PROJECT_DIR / "config" / "daily_update.toml"
+TRAINING_FILE = PROJECT_DIR / "config" / "training.toml"
 DATASET_DIR = PROJECT_DIR / "datasets"
 DATASET_REMOTE = "s3://datasets"
 # Range of the final delay: below 25 minutes a price from before the close can count as
@@ -29,6 +30,9 @@ LONGEST_FINAL_DELAY = timedelta(minutes=60)
 # above 60 a missed daily update is noticed too late.
 SHORTEST_LOAD_LIMIT = timedelta(minutes=20)
 LONGEST_LOAD_LIMIT = timedelta(minutes=60)
+# Fewest evaluation days: a model needs at least one day to be scored on. The most
+# depends on each security's stored history; training checks it.
+FEWEST_EVALUATION_DAYS = 1
 
 
 @dataclass(frozen=True)
@@ -92,6 +96,7 @@ class Settings:
         database_url: SQLAlchemy URL of the project database.
         dataset_dir: Folder where DVC keeps the copies of the training datasets.
         dataset_remote: DVC remote where `dataset_version` pushes each copy.
+        mlflow_tracking_uri: Address of the MLflow tracking server and model registry.
         code_version: Git commit the image was built from, or "unknown".
         securities: The securities the system loads, trains and forecasts.
         indices: Market indices loaded as reference series, never forecasts.
@@ -104,11 +109,14 @@ class Settings:
         replay_database_url: SQLAlchemy URL of the database replay copies into, named
             after the project database with `_replay`.
         replay_start: Simulated today of the first replay run.
+        evaluation_days: Latest trading days held back from training for evaluation,
+            an integer of at least FEWEST_EVALUATION_DAYS.
     """
 
     database_url: str = field(repr=False)
     dataset_dir: Path
     dataset_remote: str
+    mlflow_tracking_uri: str
     code_version: str
     securities: tuple[Security, ...]
     indices: tuple[Security, ...]
@@ -117,6 +125,13 @@ class Settings:
     history_start: date
     replay_database_url: str = field(repr=False)
     replay_start: date
+    evaluation_days: int
+
+    def exchange_of(self, symbol: str) -> str:
+        """Return the exchange of a security; the symbol must be a configured one."""
+        # next takes the first item the generator yields: the exchange of the first
+        # security with that symbol.
+        return next(s.exchange for s in self.securities if s.symbol == symbol)
 
 
 def _minutes(
@@ -152,8 +167,8 @@ def load_settings() -> Settings:
     """Read the settings from the environment and the files in config/.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
-    POSTGRES_DB, HISTORY_START and REPLAY_START (a missing variable raises KeyError);
-    CODE_VERSION (defaults to "unknown").
+    POSTGRES_DB, HISTORY_START, REPLAY_START and MLFLOW_TRACKING_URI (a missing
+    variable raises KeyError); CODE_VERSION (defaults to "unknown").
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-003, scope=function)
@@ -171,7 +186,8 @@ def load_settings() -> Settings:
             SHORTEST_FINAL_DELAY to LONGEST_FINAL_DELAY minutes; if load_limit_minutes
             is not an integer from SHORTEST_LOAD_LIMIT to LONGEST_LOAD_LIMIT minutes;
             if start_after plus the final delay reaches the next day; if weekdays of the
-            daily update are invalid; if a symbol or exchange of the securities file is
+            daily update are invalid; if evaluation_days is not an integer of at least
+            FEWEST_EVALUATION_DAYS; if a symbol or exchange of the securities file is
             not a non-empty text.
     """
     env = os.environ
@@ -212,6 +228,14 @@ def load_settings() -> Settings:
             f"start_after {daily_update.start_after} plus the final delay of "
             f"{schedule['final_delay_minutes']} minutes must end on the same day"
         )
+    with TRAINING_FILE.open("rb") as file:
+        training = tomllib.load(file)
+    evaluation_days = training["evaluation_days"]
+    if type(evaluation_days) is not int or evaluation_days < FEWEST_EVALUATION_DAYS:
+        raise ValueError(
+            f"evaluation_days must be an integer of at least {FEWEST_EVALUATION_DAYS},"
+            f" got {evaluation_days!r}"
+        )
     history_start = date.fromisoformat(env["HISTORY_START"])
     if not CALENDAR_START <= history_start <= date.today():
         raise ValueError(
@@ -222,6 +246,7 @@ def load_settings() -> Settings:
         database_url=database_url.render_as_string(hide_password=False),
         dataset_dir=DATASET_DIR,
         dataset_remote=DATASET_REMOTE,
+        mlflow_tracking_uri=env["MLFLOW_TRACKING_URI"],
         code_version=env.get("CODE_VERSION", "unknown"),
         securities=securities,
         indices=indices,
@@ -230,4 +255,5 @@ def load_settings() -> Settings:
         history_start=history_start,
         replay_database_url=replay_database_url.render_as_string(hide_password=False),
         replay_start=date.fromisoformat(env["REPLAY_START"]),
+        evaluation_days=evaluation_days,
     )

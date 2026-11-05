@@ -12,16 +12,13 @@ x-project: &project
     POSTGRES_HOST: db
     POSTGRES_PORT: "5432"
     MLFLOW_TRACKING_URI: http://mlflow:5000
+    # MLflow sends no usage reports to its makers.
+    MLFLOW_DISABLE_TELEMETRY: "true"
     AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
     AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
-  # The team's config folder is read live, never written; a missing models or datasets
-  # folder stops the start, so Docker never creates it as root.
+  # The team's config folder is read live, never written; a missing datasets folder
+  # stops the start, so Docker never creates it as root.
   volumes:
-    - type: bind
-      source: ./models
-      target: /app/models
-      bind:
-        create_host_path: false
     - type: bind
       source: ./datasets
       target: /app/datasets
@@ -194,7 +191,7 @@ services:
       context: .
       args:
         CODE_VERSION: ${CODE_VERSION:-unknown}
-    # The image's entrypoint run-as-owner looks up the owner of /app/models; MLflow
+    # The image's entrypoint run-as-owner looks up the owner of /app/datasets; MLflow
     # mounts no project folder and writes no host files, so it starts directly.
     entrypoint: []
     command:
@@ -212,6 +209,8 @@ services:
       - mlflow:5000,localhost:*,127.0.0.1:*
     environment:
       MLFLOW_S3_ENDPOINT_URL: http://object-store:8333
+      # MLflow sends no usage reports to its makers.
+      MLFLOW_DISABLE_TELEMETRY: "true"
       AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
       AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
     ports:

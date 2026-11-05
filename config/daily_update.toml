@@ -1,6 +1,6 @@
 # When the daily update pipeline loads the new trading days, and when a fetched price
-# counts as final, for every load. The values are for the team to agree. The API reads
-# them too, to count missed daily updates.
+# counts as final, for every load. The API reads them too, to count missed daily
+# updates.
 
 # Days the load runs on: Monday = 1 to Sunday = 7, each day once.
 weekdays = [1, 2, 3, 4, 5]

@@ -1,17 +1,19 @@
 """Forecast of the next trading day's change of one security."""
 
-import glob
-import os
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Any
 
-import joblib
+import mlflow
+from mlflow import MlflowClient
+from mlflow.sklearn import load_model
 from sqlalchemy import Engine
 
-from forecasting import db
 from forecasting.config import Settings
-
-MODEL_PATH = "models"
+from forecasting.db import read_prices, read_splits
+from forecasting.features import build_features, correct_for_splits
+from forecasting.trading_calendar import next_trading_day
+from forecasting.train import PRODUCTION_ALIAS, registered_model_name
 
 
 @dataclass(frozen=True)
@@ -24,7 +26,7 @@ class Forecast:
         symbol: Ticker of the security.
         day: The trading day the forecast is for.
         change: Predicted relative close-to-close change to `day`.
-        model_version: Identifier of the model that produced it.
+        model_version: Version of the production model in MLflow that produced it.
         start_close: The stored close the change starts from: the latest day's close,
             which may still be provisional.
         start_fetched_at: When that close was fetched; it is final if fetched at or
@@ -39,13 +41,6 @@ class Forecast:
     start_fetched_at: datetime
 
 
-def log_message(level: str, message: str) -> None:
-    """Log a message with a timestamp to standard output."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{timestamp}] {level}: {message}"
-    print(log_entry)
-
-
 def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
     """Forecast the change from the latest stored day to the next trading day.
 
@@ -54,55 +49,40 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
 
     Args:
         engine: Engine of the project database.
-        settings: Settings of this deployment; not read.
+        settings: Settings of this deployment; `mlflow_tracking_uri` names the MLflow
+            server.
         symbol: Ticker of the security.
 
     Returns:
-        The forecast with the version of the model that produced it, and the close it
-        starts from with the time that close was fetched.
+        The forecast with the version of the production model that produced it, and
+        the close it starts from with the time that close was fetched.
     """
-    log_message("START", f"Starting prediction execution for symbol: {symbol}")
+    prices = read_prices(engine, symbol)
+    # The latest stored day, as one row; the forecast starts from its close as stored,
+    # which may still be provisional.
+    latest = prices.iloc[-1]
+    model_name = registered_model_name(symbol)
+    mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    version = client.get_model_version_by_alias(model_name, PRODUCTION_ALIAS).version
+    model: Any = load_model(f"models:/{model_name}/{version}")
+    # The model is a formula over the features, so it needs the latest stored day's
+    # values of them, computed exactly as in training: from closes corrected for
+    # splits. The double brackets keep the latest row as a one-row table, the shape
+    # predict expects.
+    corrected = correct_for_splits(prices, read_splits(engine, symbol))
+    features = build_features(corrected).iloc[[-1]]
+    # predict returns one value per row; [0] takes the only one, float turns numpy's
+    # number into a plain Python float.
+    change = float(model.predict(features)[0])
 
-    model_files = glob.glob(os.path.join(MODEL_PATH, "linear_regression_model_*.pkl"))
-    if not model_files:
-        raise FileNotFoundError(
-            f"No trained model files found in {MODEL_PATH} directory"
-        )
-
-    latest_model_path = max(model_files, key=os.path.getmtime)
-    log_message("SUCCESS", f"Loading model from: {latest_model_path}")
-
-    model = joblib.load(latest_model_path)
-
-    df = db.read_prices(engine, symbol=symbol)
-
-    if df.empty:
-        raise ValueError(f"No data found in the database for symbol: {symbol}")
-
-    if "close_price" in df.columns:
-        target_col = "close_price"
-    elif "close price" in df.columns:
-        target_col = "close price"
-    else:
-        target_col = df.columns[-1]
-
-    X = df.drop(["date", target_col], axis=1, errors="ignore")
-    if X.empty:
-        X = df[[target_col]]
-
-    predictions = model.predict(X)
-
-    latest_pred = float(predictions[-1])
-    latest_date = date.fromisoformat(str(df["date"].iloc[-1]))
-    model_version = os.path.basename(latest_model_path)
-
-    log_message("END", "Prediction finished successfully.")
-
+    # The forecast is for the next trading day: the exchange's calendar skips weekends
+    # and holidays, so a Friday close forecasts Monday.
     return Forecast(
         symbol=symbol,
-        day=latest_date,
-        change=latest_pred,
-        model_version=model_version,
-        start_close=float(df[target_col].iloc[-1]),
-        start_fetched_at=datetime.now(),
+        day=next_trading_day(settings.exchange_of(symbol), latest["day"]),
+        change=change,
+        model_version=str(version),
+        start_close=float(latest["close"]),
+        start_fetched_at=latest["fetched_at"],
     )

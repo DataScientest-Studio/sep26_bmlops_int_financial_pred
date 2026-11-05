@@ -94,7 +94,7 @@ def replay_reset() -> None:
 
 
 def train_models() -> None:
-    """Train and save a model for each configured security and print its scores.
+    """Train and register a model for each configured security and print its scores.
 
     @relation(REQ-MOD-001, scope=function)
     @relation(REQ-MOD-002, scope=function)
@@ -104,10 +104,11 @@ def train_models() -> None:
     for security in settings.securities:
         result = train(engine, settings, security.symbol)
         scores = result.evaluation
+        status = "promoted" if result.promoted else "production kept"
         # Adjacent f-strings are joined without a space, so each continuation starts
         # with one. :.3% multiplies by 100 and adds %, so 0.01053 prints as 1.053%.
         print(
-            f"{result.symbol}: model {result.model_version}, MAE"
+            f"{result.symbol}: model {result.model_version} ({status}), MAE"
             f" {scores.model.mae:.3%} (persistence {scores.persistence.mae:.3%},"
             f" mean change {scores.mean_change.mae:.3%}),"
             f" skill {scores.model.skill:+.3f}"

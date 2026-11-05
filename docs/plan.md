@@ -217,6 +217,9 @@ To be decided by the team.
     promoted.
   - Lower error by a margin (for example 1 %): avoids swapping models over differences
     that are only noise; the margin becomes a setting.
+  - A pool of models trained on different time windows, all re-scored on the latest
+    days, the best one serves: the more models compete, the likelier the winner was only
+    lucky, and only models with the same inputs can compete.
 - Secured entry point (phase 3, after the required phase 3 items; the kick-off deck
   lists "Secured APIs" and "light scalability" for phase 3, the coach lists API security
   as optional): Nginx in front of the API and the demo app as the only published entry
@@ -297,8 +300,7 @@ Depends on: in brackets.
   - [x] `pyproject.toml`, `uv.lock`, `.python-version`; works from a fresh clone
   - [x] Makefile targets `setup`, `db`, `load`, `update`, `api`, `test`
   - [x] Makefile targets `train`, `predict`, run in the project image like the other
-    commands; trained models are kept in the project's `models/` folder (gitignored)
-    until MLflow stores them (Phase 2, item 3)
+    commands; trained models are stored in MLflow (Phase 2, item 3)
 - [x] **3 PostgreSQL** (2): Compose file with only the database (exact image tag, data
   volume, credentials from `.env`); table `prices` keyed by (security, day)
 - [x] **4 One-time load script** (3, data source): loads the history of the agreed
@@ -306,8 +308,7 @@ Depends on: in brackets.
 - [ ] **5 Baseline training pipeline** (3; 4 for real data)
   - [x] `read_prices` reads the stored prices of one security
   - [ ] a training function builds the target (next-day change), trains, compares with
-    the persistence and mean-change baselines, saves the model in the project's
-    `models/` folder
+    the persistence and mean-change baselines, registers the model in MLflow
   - [ ] a prediction function returns the next-day forecast for one security
   - [ ] unit tests for feature building
   - [ ] the acceptance tests of REQ-MOD-001–003 pass
@@ -342,8 +343,7 @@ Interfaces to agree at the meeting, so items 3–6 can be built in parallel:
 
 Split: by area (data, model, service), see `docs/team.md`.
 
-In Phase 1 the model is saved as a plain file; MLflow follows in Phase 2 (see
-"Roadmap").
+Trained models are recorded in MLflow (Phase 2, item 3).
 
 ## Phase 2 plan — the chain runs end to end
 Coach meeting Thu Oct 22 (a progress check, not a submission): phase 1 finished and the
@@ -369,7 +369,7 @@ it works. Depends on: in brackets.
   - [x] one image holds the project's code and its locked packages; the commands run
     from it
   - [x] Compose runs the API from it next to the database; the commands and the API
-    share the project's `models/` folder
+    share the `datasets/` folder and the MLflow server
   - [x] paths (securities file, `db/init`) do not depend on the folder a command starts
     in
 - [ ] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
@@ -457,8 +457,8 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
 - Commands: `load` (`make load` and `make update`), `replay`, `replay-reset`, `train`
   (each `python -m forecasting.commands <name>` run in the project image, and a `make`
   target); Airflow calls the same functions through the services: `load` and `replay`
-  through the data service, `train` through `POST /training` on the API (whether
-  promotion runs inside `train` or as a step of its own is the Model area's choice).
+  through the data service, `train` through `POST /training` on the API. Promotion runs
+  inside `train`.
 - Registered model names: one per security, `forecast-<symbol>` (for example
   `forecast-AAPL.US`), and `replay-forecast-<symbol>` while the replay database exists;
   `make replay-reset` removes the `replay-` models and runs.
@@ -466,12 +466,12 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
   (after each replayed day in the replay database).
 - Functions: `dataset_version(settings, symbol, rows) -> version id`, called by training
   with the rows it trains on, before it trains; MLflow records the id with the run.
-- Settings: MLflow page port (`MLFLOW_PORT`), evaluation window (its default is chosen
-  with "Better model"), replay interval (`REPLAY_INTERVAL_SECONDS`), Airflow page port
-  (`AIRFLOW_PORT`). The daily update's days (`weekdays`), time zone (`timezone`), the
-  time the final delay counts from (`start_after`) and load limit
-  (`load_limit_minutes`), and the final delay (`final_delay_minutes`), are set in
-  `config/daily_update.toml`.
+- Settings: MLflow page port (`MLFLOW_PORT`), replay interval
+  (`REPLAY_INTERVAL_SECONDS`), Airflow page port (`AIRFLOW_PORT`). The evaluation days
+  (`evaluation_days`) are set in `config/training.toml`. The daily update's days
+  (`weekdays`), time zone (`timezone`), the time the final delay counts from
+  (`start_after`) and load limit (`load_limit_minutes`), and the final delay
+  (`final_delay_minutes`), are set in `config/daily_update.toml`.
 - Code version: the commit the project image was built from; `unknown` when `make` did
   not build it.
 

@@ -13,12 +13,14 @@ from pathlib import Path
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from mlflow import MlflowClient
 from sqlalchemy import Engine, make_url, text
 
 from forecasting.api.app import create_app
 from forecasting.api.dependencies import get_engine, get_settings
 from forecasting.config import Settings, load_settings
 from forecasting.db import connect, create_database, drop_database
+from forecasting.train import EXPERIMENT_NAME
 from tests.fakes import INDICES, SECURITIES
 
 
@@ -71,9 +73,17 @@ def engine(database_url: str) -> Iterator[Engine]:
 def settings(
     example_settings: Settings, database_url: str, replay_url: str, tmp_path: Path
 ) -> Settings:
-    """Test settings on this worker's databases, test symbols and own folders."""
+    """Test settings on this worker's databases, test symbols, own folders and MLflow.
+
+    MLflow keeps its records in a file under the test's folder; the experiment is
+    created upfront so its model files land there too.
+    """
     dataset_dir = tmp_path / "datasets"
     dataset_dir.mkdir()
+    mlflow_tracking_uri = f"sqlite:///{tmp_path / 'mlflow.db'}"
+    artifacts = (tmp_path / "artifacts").as_uri()
+    client = MlflowClient(tracking_uri=mlflow_tracking_uri)
+    client.create_experiment(EXPERIMENT_NAME, artifact_location=artifacts)
 
     return replace(
         example_settings,
@@ -81,6 +91,7 @@ def settings(
         replay_database_url=replay_url,
         dataset_dir=dataset_dir,
         dataset_remote=str(tmp_path / "dataset_remote"),
+        mlflow_tracking_uri=mlflow_tracking_uri,
         securities=SECURITIES,
         indices=INDICES,
     )

@@ -26,6 +26,7 @@ def test_training_endpoint_trains_and_reports_outcome(client, engine, settings):
     body = response.json()
     assert body["symbol"] == SECURITIES[0].symbol
     assert body["model_version"]
+    assert body["promoted"] is True
     assert body["evaluation_days"] > 0
 
 

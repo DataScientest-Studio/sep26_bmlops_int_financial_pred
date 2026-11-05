@@ -43,8 +43,8 @@ db-shell:
 
 # Runs a project command in the project image, rebuilt when the code changed; starts the
 # database, the object store and the MLflow server first if they are not running. The
-# models and datasets folders are created first if missing.
-COMMAND_ENV = mkdir -p models datasets && docker compose run --rm --build commands
+# datasets folder is created first if missing.
+COMMAND_ENV = mkdir -p datasets && docker compose run --rm --build commands
 
 # Loads prices, splits and dividends from EODHD with the key in .env: a security without
 # stored prices from HISTORY_START on, otherwise only the days from its latest stored
@@ -62,19 +62,20 @@ replay-reset:
 	$(COMMAND_ENV) replay-reset
 
 # Trains a model for each configured security on its final closes, holding back the
-# latest EVALUATION_DAYS for scoring; saves it under models/<symbol>/ and prints its
-# scores next to both baselines.
+# latest evaluation_days of config/training.toml for scoring; records the run and
+# registers the model in MLflow, promotes it if it is the first or beats the production
+# model, and prints its scores next to both baselines.
 train:
 	$(COMMAND_ENV) train
 
-# Prints the newest model's forecast of the next trading day for each configured
+# Prints the production model's forecast of the next trading day for each configured
 # security.
 predict:
 	$(COMMAND_ENV) predict
 
 # Tests see only the settings of .env.example: the shell's own variables are cleared,
-# apart from PATH and HOME, which uv needs.
-TEST_ENV = env -i PATH="$$PATH" HOME="$$HOME" uv run --env-file .env.example
+# apart from PATH and HOME, which uv needs. MLflow sends no usage reports to its makers.
+TEST_ENV = env -i PATH="$$PATH" HOME="$$HOME" MLFLOW_DISABLE_TELEMETRY=true uv run --env-file .env.example
 
 # Runs the unit tests in parallel; needs no database.
 test:
@@ -87,14 +88,14 @@ acceptance: db
 
 # Checks how EODHD delivers data, with your own key from .env; a check your key's
 # history, remaining calls or plan cannot support is skipped with its reason. Short
-# tracebacks never show the key.
+# tracebacks never show the key. MLflow sends no usage reports to its makers.
 contract:
-	uv run --env-file .env pytest -n auto --dist loadscope -m eodhd --tb=short
+	MLFLOW_DISABLE_TELEMETRY=true uv run --env-file .env pytest -n auto --dist loadscope -m eodhd --tb=short
 
 # Starts the API in the project image, rebuilt when the code changed, on
 # http://localhost:8000 (docs at /docs); returns once it answers.
 api:
-	mkdir -p models datasets
+	mkdir -p datasets
 	docker compose up --build --detach --wait api
 
 # Stops the API.
@@ -117,7 +118,7 @@ AIRFLOW_SERVICES = airflow-apiserver airflow-scheduler airflow-dag-processor
 # Starts Airflow with the database and the data service, rebuilt when the code changed;
 # returns once its page answers on localhost at the port AIRFLOW_PORT from .env.
 airflow:
-	mkdir -p models datasets
+	mkdir -p datasets
 	docker compose up --build --detach --wait $(AIRFLOW_SERVICES)
 
 # Stops Airflow and the data service; the database keeps running.
@@ -130,7 +131,7 @@ MONITORING_SERVICES = prometheus grafana
 # Starts Prometheus and Grafana with the API, rebuilt when the code changed; returns
 # once the Grafana page answers on localhost at the port GRAFANA_PORT from .env.
 monitoring:
-	mkdir -p models datasets
+	mkdir -p datasets
 	docker compose up --build --detach --wait api $(MONITORING_SERVICES)
 
 # Stops Prometheus and Grafana; the API keeps running.
