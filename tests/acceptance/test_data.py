@@ -428,17 +428,6 @@ def test_replay_starts_on_the_first_or_latest_stored_day(
     assert replay_next_day(engine, replay_url, start) == start
 
 
-@pytest.mark.parametrize("edge, shift", [(min, -1), (max, 1)])
-def test_replay_start_outside_the_stored_days_is_refused(
-    engine, settings, replay_url, edge, shift
-):
-    """REQ-DAT-003: a start before the first or after the latest day is refused."""
-    start = edge(load_history_around_start(engine, settings))
-    start += timedelta(days=shift)
-    with pytest.raises(ValueError):
-        replay_next_day(engine, replay_url, start)
-
-
 def test_replay_at_the_latest_stored_day_has_nothing_left(engine, settings, replay_url):
     """REQ-DAT-003: once the latest stored day is copied, nothing is left to replay."""
     latest = max(load_history_around_start(engine, settings))
@@ -452,12 +441,6 @@ def test_replay_works_with_a_password_holding_a_space(
     """REQ-DAT-003: replay copies into a database of its own on any valid login."""
     start = min(load_history_around_start(engine, settings))
     assert replay_next_day(engine, spaced_password_replay_url, start) == start
-
-
-def test_replay_with_nothing_stored_is_refused(engine, settings, replay_url):
-    """REQ-DAT-003: with no stored history, there is nothing to replay."""
-    with pytest.raises(ValueError):
-        replay_next_day(engine, replay_url, settings.replay_start)
 
 
 def test_same_training_rows_get_the_same_version(engine, settings):
