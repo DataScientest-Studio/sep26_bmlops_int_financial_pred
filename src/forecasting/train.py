@@ -16,7 +16,6 @@ from sqlalchemy import Engine
 
 from forecasting.config import Settings
 from forecasting.datasets import dataset_version
-from forecasting.db import read_prices, read_splits
 from forecasting.evaluate import Evaluation, evaluate
 from forecasting.features import (
     CHANGE_DAYS,
@@ -25,12 +24,14 @@ from forecasting.features import (
     correct_for_splits,
 )
 from forecasting.load import is_final
+from forecasting.replay import REPLAY_PREFIX, read_history
 
 # A regression needs about ten training samples for each number it learns, one per
 # input plus one for the intercept, before its fit means anything (a common rule of
 # thumb in regression). More inputs therefore need more samples.
 SAMPLES_PER_INPUT = 10
 EXPERIMENT_NAME = "forecasting"
+REPLAY_EXPERIMENT_NAME = f"{REPLAY_PREFIX}{EXPERIMENT_NAME}"
 PRODUCTION_ALIAS = "production"
 
 
@@ -56,9 +57,14 @@ class TrainingResult:
     evaluation: Evaluation
 
 
-def registered_model_name(symbol: str) -> str:
-    """Return the name a security's models are registered under in MLflow."""
-    return f"forecast-{symbol}"
+def registered_model_name(symbol: str, replaying: bool) -> str:
+    """Return the name a security's models are registered under in MLflow.
+
+    @relation(REQ-DAT-003, scope=function)
+    """
+    prefix = REPLAY_PREFIX if replaying else ""
+
+    return f"{prefix}forecast-{symbol}"
 
 
 def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
@@ -69,6 +75,7 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     MLflow and promoted to production if it is the security's first model or has a
     lower evaluation error than the current production model on the same days.
 
+    @relation(REQ-DAT-003, scope=function)
     @relation(REQ-DAT-006, scope=function)
     @relation(REQ-MOD-001, scope=function)
     @relation(REQ-MOD-002, scope=function)
@@ -78,7 +85,8 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     @relation(REQ-SVC-002, scope=function)
 
     Args:
-        engine: Engine of the project database.
+        engine: Engine of the project database; while the replay database exists,
+            training reads that instead.
         settings: Settings of this deployment.
         symbol: Ticker of the security.
 
@@ -90,7 +98,8 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     # commands loop over the configured ones. is_final needs its exchange to know when
     # that exchange closes.
     exchange = settings.exchange_of(symbol)
-    stored = read_prices(engine, symbol)
+    history = read_history(engine, settings, symbol)
+    stored = history.prices
     # One True or False per row: is that day's close final? zip walks both columns side
     # by side. stored.loc[final] keeps the True rows, so a provisional close, which may
     # still change, never enters training.
@@ -100,7 +109,7 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     ]
     # correct_for_splits expresses the final days in the shares of the latest final
     # day; a split after that day has not happened for these rows yet.
-    prices = correct_for_splits(stored.loc[final], read_splits(engine, symbol))
+    prices = correct_for_splits(stored.loc[final], history.splits)
     features = build_features(prices)
     target = build_target(prices)
     # A row is usable when every feature and the target are present: the first rows
@@ -141,9 +150,10 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         model.predict(evaluation_features), index=evaluation_target.index
     )
     evaluation = evaluate(evaluation_target, predicted, training_target)
-    model_name = registered_model_name(symbol)
+    model_name = registered_model_name(symbol, history.replaying)
+    experiment_name = REPLAY_EXPERIMENT_NAME if history.replaying else EXPERIMENT_NAME
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    mlflow.set_experiment(EXPERIMENT_NAME)
+    mlflow.set_experiment(experiment_name)
     # The new model replaces production only if its error on the latest evaluation
     # days is lower than the production model's error on the same days. Only the
     # current production model competes, not every earlier version.

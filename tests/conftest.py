@@ -20,7 +20,7 @@ from forecasting.api.app import create_app
 from forecasting.api.dependencies import get_engine, get_settings
 from forecasting.config import Settings, load_settings
 from forecasting.db import connect, create_database, drop_database
-from forecasting.train import EXPERIMENT_NAME
+from forecasting.train import EXPERIMENT_NAME, REPLAY_EXPERIMENT_NAME
 from tests.fakes import INDICES, SECURITIES
 
 
@@ -75,8 +75,8 @@ def settings(
 ) -> Settings:
     """Test settings on this worker's databases, test symbols, own folders and MLflow.
 
-    MLflow keeps its records in a file under the test's folder; the experiment is
-    created upfront so its model files land there too.
+    MLflow keeps its records in a file under the test's folder; the experiments are
+    created upfront so their model files land there too.
     """
     dataset_dir = tmp_path / "datasets"
     dataset_dir.mkdir()
@@ -84,6 +84,7 @@ def settings(
     artifacts = (tmp_path / "artifacts").as_uri()
     client = MlflowClient(tracking_uri=mlflow_tracking_uri)
     client.create_experiment(EXPERIMENT_NAME, artifact_location=artifacts)
+    client.create_experiment(REPLAY_EXPERIMENT_NAME, artifact_location=artifacts)
 
     return replace(
         example_settings,

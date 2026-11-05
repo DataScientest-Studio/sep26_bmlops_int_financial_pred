@@ -57,9 +57,14 @@ update load:
 replay:
 	$(COMMAND_ENV) replay
 
-# Deletes the replay database; the next replay starts over from REPLAY_START.
+# Deletes the replay database and the replay runs and models in MLflow, model files
+# included, and removes for good everything deleted on the MLflow page. Training and
+# forecasts return to the member's own database and models; the next replay starts over
+# from REPLAY_START.
 replay-reset:
 	$(COMMAND_ENV) replay-reset
+	docker compose exec -e MLFLOW_TRACKING_URI=http://localhost:5000 mlflow \
+		sh -c 'mlflow gc --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"'
 
 # Trains a model for each configured security on its final closes, holding back the
 # latest evaluation_days of config/training.toml for scoring; records the run and

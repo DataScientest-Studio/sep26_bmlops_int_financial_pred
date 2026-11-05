@@ -77,7 +77,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged.
+**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged. While the replay database exists, training and forecasts use it and keep their runs and models apart from the member's own; resetting the replay deletes the replay database and those runs and models.
 
 **Rationale**: Shows the complete loop of ingestion, drift check, retraining and promotion within minutes instead of weeks.
 

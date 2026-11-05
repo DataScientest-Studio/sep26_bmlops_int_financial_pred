@@ -8,11 +8,11 @@ import os
 from datetime import date
 
 from forecasting.config import load_settings
-from forecasting.db import connect, drop_database
+from forecasting.db import connect
 from forecasting.eodhd import EodhdSource
 from forecasting.load import LoadReport, load_history
 from forecasting.predict import predict
-from forecasting.replay import replay_next_day
+from forecasting.replay import replay_next_day, reset_replay
 from forecasting.train import train
 
 
@@ -86,11 +86,14 @@ def replay() -> None:
 
 
 def replay_reset() -> None:
-    """Drop the replay database, so the next replay starts over from `REPLAY_START`.
+    """Delete the replay database and the replay runs and models in MLflow.
+
+    The next replay starts over from `REPLAY_START`; training and forecasts return to
+    the project database and its models.
 
     @relation(REQ-DAT-003, scope=function)
     """
-    drop_database(load_settings().replay_database_url)
+    reset_replay(load_settings())
 
 
 def train_models() -> None:

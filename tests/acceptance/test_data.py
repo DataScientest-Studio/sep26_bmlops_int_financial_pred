@@ -6,13 +6,21 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 import pytest
+from mlflow import MlflowClient
 from sqlalchemy import make_url, text
 
 from forecasting.datasets import dataset_version
-from forecasting.db import connect, drop_database, read_prices
+from forecasting.db import connect, database_exists, drop_database, read_prices
 from forecasting.load import load_history
-from forecasting.replay import replay_next_day
-from forecasting.trading_calendar import session_close, trading_days
+from forecasting.predict import predict
+from forecasting.replay import replay_next_day, reset_replay
+from forecasting.trading_calendar import next_trading_day, session_close, trading_days
+from forecasting.train import (
+    EXPERIMENT_NAME,
+    PRODUCTION_ALIAS,
+    REPLAY_EXPERIMENT_NAME,
+    train,
+)
 from tests.acceptance.tables import load_history_around_start, stored_table
 from tests.fakes import (
     INDICES,
@@ -441,6 +449,76 @@ def test_replay_works_with_a_password_holding_a_space(
     """REQ-DAT-003: replay copies into a database of its own on any valid login."""
     start = min(load_history_around_start(engine, settings))
     assert replay_next_day(engine, spaced_password_replay_url, start) == start
+
+
+def test_forecast_while_replaying_is_for_the_trading_day_after_the_replayed_day(
+    engine, settings
+):
+    """REQ-DAT-003: a forecast while replaying is for the replay's next trading day."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2026-06-30", seed=1)
+    source = FakeSource({security.symbol: history})
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
+    replayed_day = replay_next_day(
+        engine, settings.replay_database_url, settings.replay_start
+    )
+    assert replayed_day is not None
+    train(engine, settings, security.symbol)
+    forecast = predict(engine, settings, security.symbol)
+    assert forecast.day == next_trading_day(security.exchange, replayed_day)
+
+
+def test_training_while_replaying_registers_a_replay_model(engine, settings):
+    """REQ-DAT-003: training while replaying registers a replay model of its own."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2026-06-30", seed=1)
+    source = FakeSource({security.symbol: history})
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
+    replay_next_day(engine, settings.replay_database_url, settings.replay_start)
+    trained = train(engine, settings, security.symbol)
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    production = client.get_model_version_by_alias(
+        f"replay-forecast-{security.symbol}", PRODUCTION_ALIAS
+    )
+    assert str(production.version) == trained.model_version
+
+
+def test_replay_reset_deletes_the_replay_database_runs_and_models(engine, settings):
+    """REQ-DAT-003: resetting the replay deletes its database, runs and models."""
+    security = SECURITIES[0]
+    history = price_history(security.exchange, "2025-01-01", "2026-06-30", seed=1)
+    source = FakeSource({security.symbol: history})
+    load_history(
+        engine, source, (security,), (), settings.final_delay, settings.history_start
+    )
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    train(engine, settings, security.symbol)
+    own_experiment = client.get_experiment_by_name(EXPERIMENT_NAME)
+    assert own_experiment is not None
+    own_run_ids = [
+        run.info.run_id for run in client.search_runs([own_experiment.experiment_id])
+    ]
+    replay_next_day(engine, settings.replay_database_url, settings.replay_start)
+    train(engine, settings, security.symbol)
+    reset_replay(settings)
+    replay_experiment = client.search_experiments(
+        filter_string=f"name = '{REPLAY_EXPERIMENT_NAME}'"
+    )[0]
+    replay_runs = client.search_runs([replay_experiment.experiment_id])
+    replay_model_files = client.search_logged_models([replay_experiment.experiment_id])
+    registered_names = [model.name for model in client.search_registered_models()]
+    remaining_own_run_ids = [
+        run.info.run_id for run in client.search_runs([own_experiment.experiment_id])
+    ]
+    assert database_exists(settings.replay_database_url) is False
+    assert replay_runs == []
+    assert replay_model_files == []
+    assert registered_names == [f"forecast-{security.symbol}"]
+    assert remaining_own_run_ids == own_run_ids
 
 
 def test_same_training_rows_get_the_same_version(engine, settings):

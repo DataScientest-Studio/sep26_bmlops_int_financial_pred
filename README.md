@@ -91,7 +91,7 @@ use, shown in Grafana (`make monitoring`). Training and the forecast work as com
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
 │   ├── eodhd.py                 the EODHD data source
-│   ├── replay.py                replay of stored history into a database of its own
+│   ├── replay.py                replay of stored history into a database of its own, reading prices and splits from it while it exists, deleting it with the replay runs and models
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
@@ -154,7 +154,7 @@ output, errors included.
 | `make db-shell` | SQL prompt in the database |
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
-| `make replay-reset` | delete the replay database; the next `make replay` starts over from `REPLAY_START` |
+| `make replay-reset` | delete the replay database and the replay runs and models in MLflow, and remove for good whatever was deleted on the MLflow page; training and forecasts return to the member's own database and models, and the next `make replay` starts over from `REPLAY_START` |
 | `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
 | `make predict` | print the production model's forecast of the next trading day for each configured security |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
@@ -213,8 +213,13 @@ the replay database and fills it with every stored day up to `REPLAY_START`, whi
 lie between the first and the latest stored day. Each later run copies the replay
 database's latest day again, so a price that has become final since replaces the
 provisional one, and then the next stored day. Each run copies all or nothing. Once the
-latest stored day is copied, nothing is left to replay. `make replay-reset` deletes the
-replay database to start over.
+latest stored day is copied, nothing is left to replay. While the replay database
+exists, training and forecasts, `make train` and `make predict` included, use it instead
+of the database it copies from, and keep their runs and models apart in MLflow: runs in
+the experiment `replay-forecasting`, models as `replay-forecast-<symbol>`.
+`make replay-reset` deletes the replay database and these runs and models, model files
+included, to start over. It also removes for good whatever was deleted on the MLflow
+page, and it returns training and forecasts to the member's own database and models.
 
 ### Scheduled pipelines
 Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on
@@ -241,7 +246,8 @@ The replay pipeline (`replay`) replays one trading day every `REPLAY_INTERVAL_SE
 seconds, the same replay as `make replay` (see [Replay](#replay)). Airflow refuses to
 load it while the interval lies outside its limits and names them on its page. A missed
 run is not made up, and a run that is still going delays the next one. Once the latest
-stored day is replayed, each run is skipped: switch the pipeline off.
+stored day is replayed, each run is skipped: switch the pipeline off and run
+`make replay-reset`.
 
 Each pipeline announces its work, so that a pipeline waiting for new prices can start on
 it: the daily update pipeline after each load as the asset `prices`, also after one that
@@ -281,7 +287,8 @@ and the project commands reach the server inside Docker at `http://mlflow:5000`.
 Each configured security has the registered model `forecast-<symbol>` (for example
 `forecast-AAPL.US`). Every training run is recorded, and its model is a new version of
 that registered model; the version with the alias `production` is the one `make predict`
-uses.
+uses. While the replay database exists, training and `make predict` use
+`replay-forecast-<symbol>` instead (see [Replay](#replay)).
 
 ### Object store
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) runs in Docker (`object-store`) as

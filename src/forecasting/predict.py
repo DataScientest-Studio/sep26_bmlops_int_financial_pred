@@ -10,8 +10,8 @@ from mlflow.sklearn import load_model
 from sqlalchemy import Engine
 
 from forecasting.config import Settings
-from forecasting.db import read_prices, read_splits
 from forecasting.features import build_features, correct_for_splits
+from forecasting.replay import read_history
 from forecasting.trading_calendar import next_trading_day
 from forecasting.train import PRODUCTION_ALIAS, registered_model_name
 
@@ -44,11 +44,13 @@ class Forecast:
 def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
     """Forecast the change from the latest stored day to the next trading day.
 
+    @relation(REQ-DAT-003, scope=function)
     @relation(REQ-MOD-001, scope=function)
     @relation(REQ-SVC-001, scope=function)
 
     Args:
-        engine: Engine of the project database.
+        engine: Engine of the project database; while the replay database exists,
+            the forecast reads that instead.
         settings: Settings of this deployment; `mlflow_tracking_uri` names the MLflow
             server.
         symbol: Ticker of the security.
@@ -57,11 +59,12 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
         The forecast with the version of the production model that produced it, and
         the close it starts from with the time that close was fetched.
     """
-    prices = read_prices(engine, symbol)
+    history = read_history(engine, settings, symbol)
+    prices = history.prices
     # The latest stored day, as one row; the forecast starts from its close as stored,
     # which may still be provisional.
     latest = prices.iloc[-1]
-    model_name = registered_model_name(symbol)
+    model_name = registered_model_name(symbol, history.replaying)
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
     version = client.get_model_version_by_alias(model_name, PRODUCTION_ALIAS).version
@@ -70,7 +73,7 @@ def predict(engine: Engine, settings: Settings, symbol: str) -> Forecast:
     # values of them, computed exactly as in training: from closes corrected for
     # splits. The double brackets keep the latest row as a one-row table, the shape
     # predict expects.
-    corrected = correct_for_splits(prices, read_splits(engine, symbol))
+    corrected = correct_for_splits(prices, history.splits)
     features = build_features(corrected).iloc[[-1]]
     # predict returns one value per row; [0] takes the only one, float turns numpy's
     # number into a plain Python float.
