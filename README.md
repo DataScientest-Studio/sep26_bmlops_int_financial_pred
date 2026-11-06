@@ -16,7 +16,8 @@ Under construction. Loading prices, splits and dividends from EODHD works (`make
 `make update`), and so does replaying stored history day by day (`make replay`), both
 also on a schedule in Airflow (`make airflow`). The API reports numbers about its own
 use, shown in Grafana (`make monitoring`). Training and the forecast work as commands
-(`make train`, `make predict`); the app is not built yet.
+(`make train`, `make predict`), and training also runs in Airflow when new or replayed
+prices arrive; the app is not built yet.
 
 ## Project structure
 ```
@@ -34,8 +35,9 @@ use, shown in Grafana (`make monitoring`). Training and the forecast work as com
 ├── airflow/
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
-│       ├── data_service_call.py  the call of the data service both pipelines make; a failed call fails the task with the reason the service answered
-│       └── replay.py            the replay pipeline: one replayed trading day per interval
+│       ├── replay.py            the replay pipeline: one replayed trading day per interval
+│       ├── service_call.py      the call of a project service every pipeline makes; a failed call fails the task with the reason the service answered
+│       └── training.py          the training pipeline: trains every configured security when new prices arrive
 ├── config/
 │   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
 │   ├── securities.toml          securities to forecast, with their exchange
@@ -165,8 +167,8 @@ output, errors included.
 | `make api-stop` | stop the API |
 | `make mlflow` | start the MLflow server with the database and the object store; its page is on `localhost` at the port `MLFLOW_PORT` from `.env` (see "Model tracking" below); returns once it answers |
 | `make mlflow-stop` | stop the MLflow server and the object store; the database keeps running |
-| `make airflow` | start Airflow with the data service; its page is on `localhost` at the port `AIRFLOW_PORT` from `.env` (see "Scheduled pipelines" below); returns once it answers |
-| `make airflow-stop` | stop Airflow and the data service; the database keeps running |
+| `make airflow` | start Airflow with the database, the data service and the API; its page is on `localhost` at the port `AIRFLOW_PORT` from `.env` (see "Scheduled pipelines" below); returns once it answers |
+| `make airflow-stop` | stop Airflow and the data service; the database and the API keep running |
 | `make monitoring` | start Prometheus and Grafana with the API; the Grafana page is on `localhost` at the port `GRAFANA_PORT` from `.env` (see "Monitoring" below); returns once it answers |
 | `make monitoring-stop` | stop Prometheus and Grafana; the API keeps running |
 
@@ -227,9 +229,10 @@ Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is 
 `AIRFLOW_ADMIN_PASSWORD` from `.env`. Airflow keeps its own database and login on the
 project's database server, both created on the first start. Of the project's settings it
 receives only `REPLAY_INTERVAL_SECONDS` from `.env` and the folder `config/`, which it
-can read but not change; it never receives the EODHD key. Its tasks call the data
-service, which runs the load and the replay inside Docker and is not reachable from the
-host.
+can read but not change; it never receives the EODHD key. Its tasks call two services,
+both inside Docker: the data service, which runs loads and replays, and the API, which
+runs training. The data service is not reachable from the host; the API is, at
+`http://localhost:8000`.
 
 The daily update pipeline (`daily_update`) runs one load on the days and at the time
 that `config/daily_update.toml` sets, the same load as `make update`. Its settings are
@@ -249,19 +252,33 @@ run is not made up, and a run that is still going delays the next one. Once the 
 stored day is replayed, each run is skipped: switch the pipeline off and run
 `make replay-reset`.
 
-Each pipeline announces its work, so that a pipeline waiting for new prices can start on
-it: the daily update pipeline after each load as the asset `prices`, also after one that
-found no new trading day, and the replay pipeline after each replayed day as the asset
-`replay-prices`. The page lists both under "Assets". A skipped or failed run announces
-nothing.
+The daily update and replay pipelines announce their work, so that a pipeline waiting
+for new prices can start on it: the daily update pipeline after each load as the asset
+`prices`, also after one that found no new trading day, and the replay pipeline after
+each replayed day as the asset `replay-prices`. The page lists both under "Assets". A
+skipped or failed run announces nothing.
+
+The training pipeline (`training`) starts whenever either asset, `prices` or
+`replay-prices`, is announced. One run trains each security listed in
+`config/securities.toml` through the API, one after the other, with the same training as
+`make train`: it records the run, registers the model and promotes it if it is the
+security's first or beats the production model. While the replay database exists, it
+trains on that database (see [Replay](#replay)). Only one training run goes at a time;
+announcements that arrive during a run start one further run after it has ended. A
+failed run is not repeated. The training pipeline announces nothing.
 
 A failed run shows its reason in the log of the failed task on the page, for example an
-error EODHD answered with; the full error is in `docker compose logs data`.
+error EODHD answered with. For the daily update and replay pipelines, the full error is
+in `docker compose logs data`. For the training pipeline, an unexpected failure shows in
+the task log only as the HTTP status code the API answered with; the full error is in
+`docker compose logs api`.
 
 A pipeline starts paused: switch it on with its toggle on the page. Switch on only one
-of the two pipelines at a time, and while either is on, run none of `make load`,
-`make update`, `make replay` or `make replay-reset` by hand. Start at most one training
-at a time.
+of the daily update and replay pipelines at a time, and while either is on, run none of
+`make load`, `make update`, `make replay` or `make replay-reset` by hand. The training
+pipeline may be on with either of them. While the training pipeline is on, start no
+training by hand, neither `make train` nor a request to the API's `/training`: at most
+one training may run at a time.
 
 ### Dataset versions
 A training dataset gets a version id: its rows are written to `datasets/<symbol>.csv`
@@ -382,7 +399,11 @@ into the file. Prometheus and Grafana read their files at start:
 `docker compose restart prometheus` or `docker compose restart grafana`. A change to the
 files in `config/` reaches the daily update pipeline when Airflow next reads
 `airflow/dags/daily_update.py`, which it does regularly; the data service at its next
-load; each command when it next runs; the API after `docker compose restart api`.
+load; each command when it next runs; the API after `docker compose restart api`. A
+change to `config/securities.toml` reaches the training pipeline when Airflow next reads
+`airflow/dags/training.py`, but the API it trains through knows only the securities
+listed when it started, so a run stops with a failure at a newly listed security, after
+training those listed before it, until `docker compose restart api`.
 
 A value in `config/daily_update.toml` or `config/training.toml` that is not allowed,
 such as a minute value outside its range or not a whole number, is refused, and the

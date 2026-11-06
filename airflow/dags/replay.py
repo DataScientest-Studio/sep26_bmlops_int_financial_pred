@@ -7,7 +7,7 @@ import pendulum
 from airflow.sdk import Asset, dag, task
 from airflow.sdk.exceptions import AirflowSkipException
 from airflow.timetables.trigger import DeltaTriggerTimetable
-from data_service_call import post_to_data_service
+from service_call import post_to_service
 
 # The data service inside Compose; it runs the same replay as `make replay`.
 REPLAY_URL = "http://data:8000/replay"
@@ -50,7 +50,7 @@ def replay():
     @task(execution_timeout=REPLAY_LIMIT, outlets=[REPLAY_PRICES])
     def replay_day() -> dict:
         """Replays the next trading day; skips once nothing is left."""
-        report = post_to_data_service(REPLAY_URL, REPLAY_LIMIT)
+        report = post_to_service(REPLAY_URL, REPLAY_LIMIT)
         if report["day"] is None:
             raise AirflowSkipException("Nothing left to replay; pause the pipeline.")
 

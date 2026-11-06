@@ -120,13 +120,14 @@ mlflow-stop:
 # Airflow's services that keep running; its database and init steps run once on the way.
 AIRFLOW_SERVICES = airflow-apiserver airflow-scheduler airflow-dag-processor
 
-# Starts Airflow with the database and the data service, rebuilt when the code changed;
-# returns once its page answers on localhost at the port AIRFLOW_PORT from .env.
+# Starts Airflow with the database, the data service and the API, rebuilt when the code
+# changed; returns once its page answers on localhost at the port AIRFLOW_PORT from
+# .env.
 airflow:
 	mkdir -p datasets
 	docker compose up --build --detach --wait $(AIRFLOW_SERVICES)
 
-# Stops Airflow and the data service; the database keeps running.
+# Stops Airflow and the data service; the database and the API keep running.
 airflow-stop:
 	docker compose stop $(AIRFLOW_SERVICES) data
 

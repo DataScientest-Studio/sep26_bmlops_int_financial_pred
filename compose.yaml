@@ -55,7 +55,7 @@ x-airflow: &airflow
     REPLAY_INTERVAL_SECONDS: ${REPLAY_INTERVAL_SECONDS:?set in .env}
   volumes:
     - ./airflow/dags:/opt/airflow/dags:ro
-    # Read by the daily update pipeline; no pipeline reads securities.toml.
+    # Read by the daily update and training pipelines.
     - ./config:/opt/airflow/project-config:ro
     - airflow-logs:/opt/airflow/logs
 
@@ -305,6 +305,8 @@ services:
       airflow-init:
         condition: service_completed_successfully
       data:
+        condition: service_healthy
+      api:
         condition: service_healthy
 
   # Reads the pipelines in airflow/dags.
