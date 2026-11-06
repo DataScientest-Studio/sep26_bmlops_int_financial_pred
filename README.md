@@ -43,8 +43,8 @@ interactive app and the drift checks are not built yet.
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
 │       ├── replay.py            the replay pipeline: one replayed trading day per interval
-│       ├── service_call.py      the call of a project service every pipeline makes; a failed call fails the task with the reason the service answered
-│       └── training.py          the training pipeline: trains every configured security when new prices arrive
+│       ├── service_call.py      the call of a project service every pipeline makes; a failed call raises an error that gives the reason the service answered with, or says the service could not be reached
+│       └── training.py          the training pipeline: trains every configured security when new prices arrive; a security whose training fails does not stop the others, and the run then fails, naming each such security
 ├── config/
 │   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
 │   ├── securities.toml          securities to load, train and forecast; market indices to load as reference series
@@ -94,6 +94,7 @@ interactive app and the drift checks are not built yet.
 ├── src/forecasting/             the service
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
+│   ├── failures.py              the answer the API and the data service give when a request fails unexpectedly
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices, creating and dropping databases
 │   ├── datasets.py              version ids of the training datasets, recorded with DVC
@@ -272,15 +273,17 @@ The training pipeline (`training`) starts whenever either asset, `prices` or
 `config/securities.toml` through the API, one after the other, with the same training as
 `make train`: it records the run, registers the model and promotes it if it is the
 security's first or beats the production model. While the replay database exists, it
-trains on that database (see [Replay](#replay)). Only one training run goes at a time;
-announcements that arrive during a run start one further run after it has ended. A
-failed run is not repeated. The training pipeline announces nothing.
+trains on that database (see [Replay](#replay)). Only one training-pipeline run goes at
+a time; announcements that arrive during a run start one further run after it has ended.
+A failed run is not repeated. The training pipeline announces nothing.
 
 A failed run shows its reason in the log of the failed task on the page, for example an
 error EODHD answered with. For the daily update and replay pipelines, the full error is
-in `docker compose logs data`. For the training pipeline, an unexpected failure shows in
-the task log only as the HTTP status code the API answered with; the full error is in
-`docker compose logs api`.
+in `docker compose logs data`. The training pipeline trains every security even when the
+training of one fails: its task log shows each failure as it happens. After the last
+security the run fails, and its task log ends with one message that lists each security
+whose training failed, with the reason the API gave or the note that the API could not
+be reached. The API's log (`docker compose logs api`) holds the full error.
 
 A pipeline starts paused: switch it on with its toggle on the page. Switch on only one
 of the daily update and replay pipelines at a time, and while either is on, run none of
@@ -459,8 +462,8 @@ picks up a changed dashboard file by itself within seconds. A change to the file
 
 A change to `config/securities.toml` reaches the training pipeline when Airflow next
 reads `airflow/dags/training.py`. The pipeline trains through the API, which knows only
-the securities listed when it started: until `docker compose restart api`, each training
-run trains the securities listed before a new one and then fails at the new one.
+the securities listed when it started: until `docker compose restart api`, each run
+trains the other securities and fails, naming the new one as unknown to the API.
 
 A value in `config/daily_update.toml` or `config/training.toml` that is not allowed,
 such as a minute value outside its range or one that is not a whole number, is refused:

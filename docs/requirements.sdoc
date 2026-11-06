@@ -358,6 +358,16 @@ STATEMENT: >>>
 A configured value, in the member's environment file or the project's configuration folder, that is missing or outside its allowed range makes the commands and services that read it refuse to start, with a message that names the setting.
 <<<
 
+[REQUIREMENT]
+UID: REQ-AUT-008
+STATUS: Draft
+TAGS: phase-2
+VERIFICATION: Demonstration
+TITLE: Training continues past a failed security
+STATEMENT: >>>
+A run of the training pipeline trains every configured security even when the training of one of them fails; the run then fails and names each security whose training failed.
+<<<
+
 [[/SECTION]]
 
 [[SECTION]]

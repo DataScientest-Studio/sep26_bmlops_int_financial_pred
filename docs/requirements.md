@@ -269,6 +269,15 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 **Statement**: A configured value, in the member's environment file or the project's configuration folder, that is missing or outside its allowed range makes the commands and services that read it refuse to start, with a message that names the setting.
 
+### Training continues past a failed security
+
+**UID**: REQ-AUT-008 \
+**Status**: Draft \
+**Tags**: phase-2 \
+**VERIFICATION**: Demonstration
+
+**Statement**: A run of the training pipeline trains every configured security even when the training of one of them fails; the run then fails and names each security whose training failed.
+
 ## Monitoring
 
 ### Training data drift

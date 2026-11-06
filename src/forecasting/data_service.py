@@ -4,11 +4,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI
 
 from forecasting.commands import run_load, run_replay
 from forecasting.config import load_settings
+from forecasting.failures import report_failure
 from forecasting.load import LoadReport
 
 
@@ -27,28 +27,10 @@ async def read_settings_at_start(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(
-    title="Financial forecasting data service", lifespan=read_settings_at_start
+    title="Financial forecasting data service",
+    lifespan=read_settings_at_start,
 )
-
-
-@app.exception_handler(Exception)
-def report_failure(request: Request, error: Exception) -> JSONResponse:
-    """Answer a failed load or replay with its reason, so the pipeline can show it.
-
-    The error still reaches the service's own log with its traceback.
-
-    @relation(REQ-AUT-001, scope=function)
-
-    Args:
-        request: The request that failed; not read.
-        error: The error the load or replay raised.
-
-    Returns:
-        An answer with status 500 whose detail is the error's type and message.
-    """
-    reason = f"{type(error).__name__}: {error}"
-
-    return JSONResponse(status_code=500, content={"detail": reason})
+app.add_exception_handler(Exception, report_failure)
 
 
 @app.get("/health")

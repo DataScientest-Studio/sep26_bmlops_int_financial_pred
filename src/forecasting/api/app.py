@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from forecasting.api.dependencies import get_settings
 from forecasting.api.metrics import add_metrics
 from forecasting.api.routes import router
+from forecasting.failures import report_failure
 
 
 @asynccontextmanager
@@ -27,10 +28,12 @@ async def read_settings_at_start(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Create the API with all endpoints.
 
-    Settings are read when the application starts, and a setting that is refused
-    stops the start; database and model are opened on first use, so tests can
-    replace them.
+    Settings are read when the application starts, and a setting that is refused stops
+    the start; database and model are opened on first use, so tests can replace them.
+    The API answers an unexpected error with status 500 and its reason, so a pipeline
+    can show it.
 
+    @relation(REQ-AUT-001, scope=function)
     @relation(REQ-SVC-001, scope=function)
     @relation(REQ-SVC-002, scope=function)
 
@@ -43,6 +46,7 @@ def create_app() -> FastAPI:
         lifespan=read_settings_at_start,
     )
     app.include_router(router)
+    app.add_exception_handler(Exception, report_failure)
     add_metrics(app)
 
     return app
