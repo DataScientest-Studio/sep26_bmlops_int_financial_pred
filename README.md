@@ -1,9 +1,12 @@
 # Financial forecasting service
 
 Forecasts the next trading day's price change of a security and offers the forecast
-through an API and an interactive app. An automated pipeline keeps it current: new
-quotes are loaded, the model is retrained, a better model replaces the current one, and
-the running system is monitored.
+through an API. Automated pipelines keep it current: new quotes are loaded, a model is
+trained for each security, and a better model replaces the current one. A dashboard
+shows how the API is used and how up to date the prices are, and alerts fire when the
+API returns server errors, the prices fall behind or a daily update is missed. Still to
+come: an interactive app that shows the forecasts, and drift checks, which compare
+recent data with older data and start retraining when the data has changed.
 
 **Not investment advice.** Short-term prices move close to randomly; every model is
 compared with simple baselines ("tomorrow's price equals today's", and the historical
@@ -12,12 +15,15 @@ mean change), and beating them is not expected.
 Group project of the DataScientest MLOps bootcamp (sep26 cohort).
 
 ## Status
-Under construction. Loading prices, splits and dividends from EODHD works (`make load`,
-`make update`), and so does replaying stored history day by day (`make replay`), both
-also on a schedule in Airflow (`make airflow`). The API reports numbers about its own
-use, shown in Grafana (`make monitoring`). Training and the forecast work as commands
-(`make train`, `make predict`), and training also runs in Airflow when new or replayed
-prices arrive; the app is not built yet.
+Under construction. `make load` and `make update` load prices, splits and dividends from
+EODHD, a provider of market data with a free tier. `make replay` replays stored history
+one trading day at a time, as if each day were arriving live. Airflow, a tool that runs
+chains of tasks (pipelines) at set times or when another pipeline announces new data,
+runs both on a schedule (`make airflow`). The API reports numbers about its own use and
+about how up to date the prices are; Grafana, a tool for dashboards and alerts, shows
+them (`make monitoring`). Training and the forecast work as commands (`make train`,
+`make predict`), and Airflow also runs training when new or replayed prices arrive. The
+interactive app and the drift checks are not built yet.
 
 ## Project structure
 ```
@@ -28,10 +34,11 @@ prices arrive; the app is not built yet.
 ├── pyproject.toml               project metadata and packages
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
+├── .gitignore                   files Git leaves out, among them .env, the Python environment, the datasets folder, price data (CSV) and caches
 ├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
 ├── .dockerignore                what the project image is built from
 ├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the data service, Airflow, Prometheus, Grafana, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, MLflow address for commands run on this machine, first day of history, replay start and interval, EODHD key)
+├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, MLflow address for programs run on this machine outside Docker, first day of history, replay start and interval, EODHD key)
 ├── airflow/
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
@@ -40,7 +47,7 @@ prices arrive; the app is not built yet.
 │       └── training.py          the training pipeline: trains every configured security when new prices arrive
 ├── config/
 │   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
-│   ├── securities.toml          securities to forecast, with their exchange
+│   ├── securities.toml          securities to load, train and forecast; market indices to load as reference series
 │   └── training.toml            training: how many of the latest days are held back to score a model
 ├── db/
 │   ├── init/
@@ -84,7 +91,7 @@ prices arrive; the app is not built yet.
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
 ├── datasets/                    copies of the training datasets with their version records, kept by DVC (gitignored)
-├── src/forecasting/             the service (skeleton: functions not built yet raise NotImplementedError)
+├── src/forecasting/             the service
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
 │   ├── config.py                settings from .env and config/
@@ -98,7 +105,7 @@ prices arrive; the app is not built yet.
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
 │   ├── predict.py               next-trading-day forecast
-│   ├── monitoring.py            drift checks
+│   ├── monitoring.py            drift checks (not built yet)
 │   └── api/                     FastAPI app, endpoints, request and response bodies, the numbers at /metrics
 ├── tests/
 │   ├── acceptance/              black-box tests, one or more per testable requirement
@@ -125,8 +132,8 @@ make load                 # builds the project image, loads the price history fr
 
 After that, `make update` once a day adds the new trading days.
 
-`.env` needs every setting of `.env.example`; a missing one is named in the error of the
-first command or API request that reads the settings.
+`.env` needs every setting of `.env.example`; a missing one is named when a command, the
+API or the data service starts.
 
 `make setup` installs the Python version from `.python-version` if missing and creates
 `.venv/` with the packages pinned in `uv.lock`; tests and checks run from it.
@@ -253,10 +260,12 @@ stored day is replayed, each run is skipped: switch the pipeline off and run
 `make replay-reset`.
 
 The daily update and replay pipelines announce their work, so that a pipeline waiting
-for new prices can start on it: the daily update pipeline after each load as the asset
-`prices`, also after one that found no new trading day, and the replay pipeline after
-each replayed day as the asset `replay-prices`. The page lists both under "Assets". A
-skipped or failed run announces nothing.
+for new prices can start on it. What they announce is an asset, Airflow's word for a
+named marker that a pipeline announces when a run succeeds and that other pipelines wait
+for. The daily update pipeline announces the asset `prices` after each load, also after
+one that found no new trading day; the replay pipeline announces the asset
+`replay-prices` after each replayed day. The page lists both under "Assets". A skipped
+or failed run announces nothing.
 
 The training pipeline (`training`) starts whenever either asset, `prices` or
 `replay-prices`, is announced. One run trains each security listed in
@@ -335,8 +344,8 @@ within the load limit (`load_limit_minutes`), the longest a load may run; 0 mean
 was missed. The schedule is in `config/daily_update.toml`. The number is left out while
 the database cannot be read, before the first load is recorded, and while the replay
 database exists, since the member then switches the daily update pipeline off and the
-replay pipeline on. Each call of `/metrics` measures
-`trading_days_behind` and `daily_updates_missed` anew.
+replay pipeline on. Each call of `/metrics` measures `trading_days_behind` and
+`daily_updates_missed` anew.
 
 Prometheus collects the list regularly (see
 [Monitoring settings](#monitoring-settings)). No port is published for it on the host;
@@ -394,24 +403,6 @@ the rules are listed there with their state; an alert that fires is listed as fi
 | Final delay after an exchange's close, for every load | `config/daily_update.toml` (`final_delay_minutes`) |
 | "Trading days behind" panel: red from | `grafana/dashboards/api.json` (`thresholds`) |
 
-The alert rules are team configuration and read-only on the Grafana page. A change goes
-into the file. Prometheus and Grafana read their files at start:
-`docker compose restart prometheus` or `docker compose restart grafana`. A change to the
-files in `config/` reaches the daily update pipeline when Airflow next reads
-`airflow/dags/daily_update.py`, which it does regularly; the data service at its next
-load; each command when it next runs; the API after `docker compose restart api`. A
-change to `config/securities.toml` reaches the training pipeline when Airflow next reads
-`airflow/dags/training.py`, but the API it trains through knows only the securities
-listed when it started, so a run stops with a failure at a newly listed security, after
-training those listed before it, until `docker compose restart api`.
-
-A value in `config/daily_update.toml` or `config/training.toml` that is not allowed,
-such as a minute value outside its range or not a whole number, is refused, and the
-commands, the API and the data service then do not start, so a refused value also stops
-`docker compose restart api`. When `make api`, `make monitoring` or `make airflow` stops
-because a container exited, `docker compose logs api` (or `docker compose logs data`)
-shows the reason. The ranges are set in `src/forecasting/config.py`.
-
 #### Known limitations
 - Without data, every alert rule counts as OK: "API error rate" while no request came,
   "Data not fresh" while the database cannot be read and for a security without a stored
@@ -425,11 +416,65 @@ shows the reason. The ranges are set in `src/forecasting/config.py`.
   never seen.
 - No notification is sent anywhere; firing alerts are only listed in Grafana.
 
+### Settings
+Settings live in these files. `.env` holds the values for the member's own machine; the
+other files hold the team's settings and are committed with the code. To change a
+setting, edit its file:
+
+- `.env`, a copy of `.env.example` that is never committed: the values for the member's
+  own machine, each explained in `.env.example`. Among them are the database login and
+  port, which stay as in `.env.example` because the tests log in with them (see
+  [Setup](#setup)); the MLflow address for programs run on this machine outside Docker
+  (`MLFLOW_TRACKING_URI`); the ports of the Airflow, MLflow and Grafana pages and the
+  logins of the Airflow and Grafana pages, plus the database logins of Airflow and
+  MLflow; the object store's login; the first day of history (`HISTORY_START`); the
+  replay's start and interval (`REPLAY_START`, `REPLAY_INTERVAL_SECONDS`); and the EODHD
+  key (`EODHD_API_KEY`).
+- `config/daily_update.toml`: when the daily update runs, how long a load may run and
+  when a fetched price counts as final; its keys are in
+  [Monitoring settings](#monitoring-settings).
+- `config/securities.toml`: the securities the system loads, trains a model for and
+  forecasts, each with its `symbol` and `exchange`. The file also lists market indices,
+  which the system loads and checks for freshness but never trains a model for or
+  forecasts: reference series that show the trend of the securities' markets.
+- `config/training.toml`: how many of the latest trading days training holds back to
+  score each model (`evaluation_days`).
+- `grafana/provisioning/alerting/alerts.yaml` and `grafana/dashboards/api.json`: the
+  alert rules and the dashboard, both read-only on the Grafana page; their keys are in
+  [Monitoring settings](#monitoring-settings).
+- `prometheus/prometheus.yml` and `prometheus/rules.yml`: what Prometheus collects, how
+  often, and the error rate it computes; their keys are in
+  [Monitoring settings](#monitoring-settings).
+
+Prometheus and Grafana read their files when they start: after a change, run
+`docker compose restart prometheus` or `docker compose restart grafana`. Grafana also
+picks up a changed dashboard file by itself within seconds. A change to the files in
+`config/` takes effect:
+
+- in the daily update pipeline, when Airflow next reads `airflow/dags/daily_update.py`,
+  which it does regularly;
+- in the data service, at its next load;
+- in a command, when it next runs;
+- in the API, after `docker compose restart api`.
+
+A change to `config/securities.toml` reaches the training pipeline when Airflow next
+reads `airflow/dags/training.py`. The pipeline trains through the API, which knows only
+the securities listed when it started: until `docker compose restart api`, each training
+run trains the securities listed before a new one and then fails at the new one.
+
+A value in `config/daily_update.toml` or `config/training.toml` that is not allowed,
+such as a minute value outside its range or one that is not a whole number, is refused:
+the commands, the API and the data service then do not start, and after
+`docker compose restart api` the API stays down. The allowed ranges are set in
+`src/forecasting/config.py`. When `make api`, `make monitoring` or `make airflow` stops
+because a container exited, `docker compose logs api` (or `docker compose logs data`)
+shows the reason.
+
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses
 their own key:
 
-1. Register for the free plan at [eodhd.com](https://eodhd.com) and follow the
+1. Register for the free tier at [eodhd.com](https://eodhd.com) and follow the
    instructions there to get your key.
 2. Put it into `.env` as `EODHD_API_KEY=...`. `.env` is never committed.
 3. Try it with `make contract`: it checks how EODHD delivers data with your key and

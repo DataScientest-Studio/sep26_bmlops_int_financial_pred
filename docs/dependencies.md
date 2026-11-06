@@ -1,6 +1,8 @@
 # Dependencies
 
-Every package the project declares in `pyproject.toml`, what it does and where we use it. Exact versions are in `uv.lock`; `make setup` installs them. Packages these pull in themselves (numpy, pydantic, starlette …) are not listed.
+Every package the project declares in `pyproject.toml`, what it does and where we use
+it. Exact versions are in `uv.lock`; `make setup` installs them. Packages these pull in
+themselves (numpy, pydantic, starlette …) are not listed.
 
 ## Runtime
 
@@ -8,9 +10,9 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 |---|---|---|
 | fastapi | Web framework for HTTP APIs: turns Python functions into endpoints, checks request and response bodies, and generates the interactive documentation at `/docs`. | The API (`forecasting.api`): `/health`, `/training`, `/predict`, `/metrics`; the data service (`forecasting.data_service`): `/health`, `/load`, `/replay`. |
 | uvicorn | Web server that runs a FastAPI application and listens on a port. | The `api` service (`make api`) and the `data` service. |
-| pandas | Tables in memory (DataFrame): reading query results, computing changes and rolling values over days. | Prices, features, target, evaluation. |
-| scikit-learn | Machine-learning library: regression models, metrics, preprocessing. | The model (Ridge, see `decisions/regressors.md`) and its error metrics. |
-| mlflow | Experiment tracking and model registry: records each training run's parameters, metrics, versions and model files, registers models and marks which version is in production. | The MLflow server (`make mlflow`) and recording training runs (`forecasting.train`). |
+| pandas | Tables in memory (DataFrame): reading query results, computing changes over days. | Prices, features, target, evaluation. |
+| scikit-learn | Machine-learning library: regression models, preprocessing and pipelines that chain them. | The model of each security: a `StandardScaler` and a `LinearRegression` in one scikit-learn pipeline (`forecasting.train`; see `decisions/regressors.md`). |
+| mlflow | Experiment tracking and model registry: records each training run's parameters, metrics, versions and model files, registers models and marks which version is in production. | The MLflow server (`make mlflow`); recording training runs, registering models, loading the production model so that training can score it again on the new model's evaluation days, and marking a promoted model as production (`forecasting.train`); loading the production model (`forecasting.predict`); deleting the replay runs and models (`forecasting.replay`, `make replay-reset`). |
 | boto3 | Client for S3-compatible object stores: uploads and downloads files over the S3 protocol. MLflow uses it underneath when its model files live in an `s3://` bucket. | The MLflow server and its clients storing and reading model files in the object store (SeaweedFS). |
 | sqlalchemy | Database toolkit: one way to connect to and query SQL databases, independent of the database product; pandas reads and writes tables through it. | Connection to PostgreSQL (`forecasting.db`), reading and writing prices. |
 | psycopg (with `binary`) | The PostgreSQL driver for Python: the part that actually talks to the PostgreSQL server over the network. SQLAlchemy uses it underneath (`postgresql+psycopg://…` in the connection URL). `binary` installs a ready-built version, so no compiler or PostgreSQL client libraries are needed. | Every database connection; the test fixtures use it directly to create and drop test databases. |
@@ -35,7 +37,8 @@ Every package the project declares in `pyproject.toml`, what it does and where w
 
 ## In Airflow's image
 
-The pipelines in `airflow/dags/` run in Airflow's own image, which holds none of the project's packages; they use only packages that image brings along.
+The pipelines in `airflow/dags/` run in Airflow's own image, which holds none of the
+project's packages; they use only packages that image brings along.
 
 | Package | What it does | Used for |
 |---|---|---|

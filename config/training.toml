@@ -1,5 +1,3 @@
-# How many of the latest trading days training holds back to score each model.
-
 # Latest trading days held back from training to score each model, in whole days.
 # Training refuses a value that leaves a security too few earlier days to learn from.
 evaluation_days = 60

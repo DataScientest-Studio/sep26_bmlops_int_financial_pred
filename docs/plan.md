@@ -18,7 +18,9 @@ the table.
 | Continuous integration | every push runs `make lint` and `make test` on GitHub | Built | Oct 12, 2026 1) | [Continuous integration](#continuous-integration) |
 | Data source | EODHD, free tier (20 calls per day, 1 year of history); each member uses their own free key; `make load` fills a new database, `make update` adds the new trading days | Agreed | Oct 12, 2026 1) | [Data source](#data-source) |
 | Close prices | prices stored as they printed; splits and dividends in tables of their own | Agreed | Oct 12, 2026 1) | [Close prices](#close-prices) |
-| Model inputs | the model's inputs and target are built from prices and volumes corrected for splits; dividends are not corrected | Decided (Tobias) | Nov 5, 2026 9) | [Close prices](#close-prices) |
+| Model inputs | the model's inputs and target are built from closes corrected for splits, not for dividends; volumes, which the model does not use, are corrected for splits too | Decided (Tobias) | Nov 5, 2026 9) | [Close prices](#close-prices) |
+| Model choice | one model per security, StandardScaler + LinearRegression (scikit-learn), predicting the next trading day's change from the 5 past daily changes; scored on the latest evaluation days, which training holds back, against the persistence and mean-change baselines by MAE, skill against persistence and directional accuracy | Built | Nov 5, 2026 9) | REQ-MOD-001–003, [`decisions/regressors.md`](decisions/regressors.md) |
+| Better model | a new model replaces a security's production model only if its MAE on the latest evaluation days (`evaluation_days` in `config/training.toml`) is lower than the production model's on the same days; a tie keeps the production model; a security's first model always becomes its production model | Built | Nov 5, 2026 9) | REQ-MOD-005, [Better model](#better-model) |
 | Package and login | Python package `forecasting`; development login `admin`/`admin` in `.env.example`, for local use only | Built | Oct 12, 2026 1) | — |
 | Model serving | FastAPI; BentoML is not used | Coach feedback | Oct 15, 2026 2) | — |
 | Roadmap | milestones and phase plans as written in this plan | Decided (Tobias) | Oct 19, 2026 3) | [Roadmap](#roadmap) |
@@ -59,7 +61,7 @@ coordinator, Oct 22, 2026.
 8\) Decided by Tobias as coordinator, Nov 4, 2026.
 
 9\) Decided by Tobias as coordinator, Nov 5, 2026: the model's inputs, corrected for
-splits.
+splits; the model choice and the better-model rule, as built.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private
@@ -153,17 +155,35 @@ the final close.
 ### Close prices
 The database stores prices as they printed — open, high, low, close and volume as traded
 that day. Splits (ratio) and dividends (amount actually paid, currency) are stored as
-events in tables of their own; the model's inputs and target are built from prices and
-volumes corrected for splits (a split counts from its own day on, once a stored day on
-or after it exists); dividends are not corrected. EODHD delivers volume already
+events in tables of their own; the model's inputs and target are built from closes
+corrected for splits, not for dividends; volumes, which the model does not use, are
+corrected for splits too. A split takes effect on its own day, and only once the
+database holds a price for that day or a later one. EODHD delivers volume already
 corrected for each split it has applied; a split it lists for a day after the last
 delivered day is not yet applied. The load reverses the correction with the split ratios
 it fetches in the same run (each day's volume divided by the ratios of all later splits
-up to the last delivered day). When on a split's own day EODHD applies it (before the
-session opens, during it, or only after the close) is unchecked; it is checked when a
-reference security next splits. EODHD keeps closes as printed and multiplies the volume
-before a split by its ratio; the splits API delivers each ratio as text, for example
-`4.000000/1.000000`.
+up to the last delivered day). At what point of a split's own day EODHD applies it —
+before the session opens, during it, or only after the close — is not checked yet; it is
+checked when a reference security next splits. EODHD keeps closes as printed and
+multiplies the volume before a split by its ratio; the splits API delivers each ratio as
+text, for example `4.000000/1.000000`.
+
+### Better model
+A newly trained model replaces a security's production model only if its mean absolute
+error on the latest evaluation days (`evaluation_days` in `config/training.toml`) is
+lower than the production model's on the same days. The production model forecasts those
+days again, so both errors come from the same days; a tie keeps the production model,
+and a security's first model always becomes its production model.
+
+Alternatives weighed:
+- Lower error, and better than "no change": as above, and the new model must also beat
+  the persistence baseline on those days; a model that loses to "no change" is never
+  promoted.
+- Lower error by a margin (for example 1 %): avoids swapping models over differences
+  that are only noise; the margin becomes a setting.
+- A pool of models trained on different time windows, all re-scored on the latest days,
+  the best one serves: the more models compete, the likelier the winner was only lucky,
+  and only models with the same inputs can compete.
 
 ### Object store
 Model files and dataset versions are kept in an S3-compatible object store that runs in
@@ -175,15 +195,15 @@ the API send and fetch model files through the MLflow server; DVC copies each da
 version into a bucket of its own.
 
 ### Reference securities
-Six stocks that behave differently, plus two market indices as reference series
-(`config/securities.toml`). The indices are loaded like the stocks but are never a
-forecast target; whether the model uses their recent changes as inputs is part of "First
-model". Each request covers one symbol and one kind of data (EODHD's requests for a
-whole exchange cost 100 calls). A load costs three calls per stock (prices, splits,
-dividends) and one per index (no splits or dividends): 20 calls, the free tier's daily
-limit. A daily update costs the same when events are checked every day, 8 when only
-prices are fetched; a fetch during a running session does not fit beside a full daily
-update on the free tier.
+Six stocks that behave differently, plus two market indices as reference series, which
+show the trend of the stocks' markets (`config/securities.toml`). The indices are loaded
+like the stocks but are never forecast and are no model input; the model's inputs come
+only from the prices of the security being forecast. Each request covers one symbol and
+one kind of data (EODHD's requests for a whole exchange cost 100 calls). A load costs
+three calls per stock (prices, splits, dividends) and one per index (no splits or
+dividends): 20 calls, the free tier's daily limit. A daily update costs the same when
+events are checked every day, 8 when only prices are fetched; a fetch during a running
+session does not fit beside a full daily update on the free tier.
 
 | Security | Exchange | Why |
 |---|---|---|
@@ -198,28 +218,6 @@ update on the free tier.
 
 ## Decision proposals
 To be decided by the team.
-- First model: at most 1–2 days of model work (coach), then on to the MLOps parts.
-  Proposal: Ridge regression (scikit-learn) predicting the next-day change, always
-  scored next to the two required baselines (persistence: predicted change 0; historical
-  mean change). Features from the price history only: changes of the last 1–5 days, 5-
-  and 20-day volatility, volume change. Metrics: MAE, skill against persistence,
-  directional accuracy, on days after the training period. Candidates with pros and
-  cons: `decisions/regressors.md`. Owner: Scheima, who decides.
-- Better model: which newly trained model replaces a security's production model; the
-  Model area decides. A security's first model always becomes its production model.
-  Alternatives:
-  - Lower error than the production model: the new model is promoted only if its mean
-    absolute error on the evaluation window (for example the last 60 trading days) is
-    lower than the production model's on the same days; a tie keeps the production
-    model. Simple, and both models are scored on the same days.
-  - Lower error, and better than "no change": as above, and the new model must also beat
-    the persistence baseline on those days; a model that loses to "no change" is never
-    promoted.
-  - Lower error by a margin (for example 1 %): avoids swapping models over differences
-    that are only noise; the margin becomes a setting.
-  - A pool of models trained on different time windows, all re-scored on the latest
-    days, the best one serves: the more models compete, the likelier the winner was only
-    lucky, and only models with the same inputs can compete.
 - Secured entry point (phase 3, after the required phase 3 items; the kick-off deck
   lists "Secured APIs" and "light scalability" for phase 3, the coach lists API security
   as optional): Nginx in front of the API and the demo app as the only published entry
@@ -305,18 +303,18 @@ Depends on: in brackets.
   volume, credentials from `.env`); table `prices` keyed by (security, day)
 - [x] **4 One-time load script** (3, data source): loads the history of the agreed
   securities; a re-run creates no duplicates; API key read from `.env`
-- [ ] **5 Baseline training pipeline** (3; 4 for real data)
+- [x] **5 Baseline training pipeline** (3; 4 for real data)
   - [x] `read_prices` reads the stored prices of one security
-  - [ ] a training function builds the target (next-day change), trains, compares with
+  - [x] a training function builds the target (next-day change), trains, compares with
     the persistence and mean-change baselines, registers the model in MLflow
-  - [ ] a prediction function returns the next-day forecast for one security
-  - [ ] unit tests for feature building
-  - [ ] the acceptance tests of REQ-MOD-001–003 pass
-- [ ] **6 Initial API endpoints** (5)
+  - [x] a prediction function returns the next-day forecast for one security
+  - [x] unit tests for feature building
+  - [x] the acceptance tests of REQ-MOD-001–003 pass
+- [x] **6 Initial API endpoints** (5)
   - [x] FastAPI routes `training/` (runs training) and `predict/` (security in; forecast
     and model version out), wired to the training and prediction functions; unknown
     symbols refused
-  - [ ] the acceptance tests of REQ-SVC-001/002 pass
+  - [x] the acceptance tests of REQ-SVC-001/002 pass
 - [x] **7 Minimum tests and docs** (2–6)
   - [x] README section "Setup", from a fresh clone
   - [x] unit tests run in parallel with pytest-xdist; both endpoints covered by the
@@ -372,7 +370,7 @@ it works. Depends on: in brackets.
     share the `datasets/` folder and the MLflow server
   - [x] paths (securities file, `db/init`) do not depend on the folder a command starts
     in
-- [ ] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
+- [x] **3 MLflow tracking** (2; 1 for training runs; REQ-MOD-004)
   - [x] the object store, SeaweedFS, in Compose: an exact image version, its data in a
     volume, no published port
   - [x] the MLflow server in Compose: its records in the database `mlflow` on the
@@ -381,21 +379,21 @@ it works. Depends on: in brackets.
   - [x] the project image carries the commit it was built from: `make` passes it in when
     it builds the image, a build from a tree with uncommitted changes says so, and a
     build `make` did not start records the code version as `unknown`
-  - [ ] every training run records its parameters, metrics, dataset version, code
+  - [x] every training run records its parameters, metrics, dataset version, code
     version and model (1)
-  - [ ] MLflow is the model store; the `models/` folder is removed (1)
-- [ ] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
-  - [ ] one registered model per security
-  - [ ] a new model becomes production only if it is better by the rule chosen in
-    "Better model" (Decision proposals); the first model always becomes production
-  - [ ] `predict/` uses the production model; the training response says whether the
+  - [x] MLflow is the model store; the `models/` folder is removed (1)
+- [x] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
+  - [x] one registered model per security
+  - [x] a new model becomes production only if it is better by the rule in
+    [Better model](#better-model); the first model always becomes production
+  - [x] `predict/` uses the production model; the training response says whether the
     model was promoted
-- [ ] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
+- [x] **5 Dataset version** (3 for the MLflow record; REQ-DAT-006)
   - [x] `dataset_version` writes the rows it is given, without row numbers, to
     `datasets/<symbol>.csv`, records the file with DVC without Git and returns DVC's
     fingerprint of it as the version id; the same rows always get the same id, in the
     member's own database and in the replay database alike
-  - [ ] before training a security, training passes the rows it trains on to
+  - [x] before training a security, training passes the rows it trains on to
     `dataset_version`
   - [x] each distinct dataset is kept as a full copy in DVC's store on the member's own
     machine, so a dataset can be brought back by its id; no remote outside the member's
@@ -403,7 +401,7 @@ it works. Depends on: in brackets.
     without Git DVC's clean-up would remove them; the snapshot is a record, training
     reads from the database
   - [x] DVC copies each dataset version into the object store (item 3)
-  - [ ] MLflow records it with the run
+  - [x] MLflow records it with the run
 - [x] **6 Replay** (7 for the interval; REQ-DAT-003)
   - [x] `make replay` copies the next day from the member's own database into a database
     of its own, named after it with `_replay`: prices with their fetch times, splits and
@@ -418,7 +416,7 @@ it works. Depends on: in brackets.
   - [x] the member's own database is only read; replay makes no EODHD calls
   - [x] the replay interval (`REPLAY_INTERVAL_SECONDS`, within the limits of
     REQ-DAT-003) sets the schedule of the replay pipeline (item 7)
-- [ ] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001, REQ-DAT-003)
+- [x] **7 Airflow** (2; 4 for training; 6 for replay; REQ-AUT-001, REQ-DAT-003)
   - [x] Airflow 3.3.2 in Compose, LocalExecutor, with its own database `airflow` on the
     project's PostgreSQL server, created when missing, and its own login, which owns
     only that database; its page on `127.0.0.1:${AIRFLOW_PORT}`, with a login for one
@@ -440,7 +438,7 @@ it works. Depends on: in brackets.
     the asset `prices`, also after one that found no new trading day; the replay
     pipeline after each replayed day as the asset `replay-prices`; a skipped or failed
     run announces nothing
-  - [ ] training pipeline: starts on either `prices` or `replay-prices` (at most one run
+  - [x] training pipeline: starts on either `prices` or `replay-prices` (at most one run
     at a time, no catch-up, starts paused) and calls `POST /training` on the API for
     each configured security (`airflow-scheduler` depends on `api`, so `make airflow`
     starts the API too). While the replay database exists, training, `predict/` and the
