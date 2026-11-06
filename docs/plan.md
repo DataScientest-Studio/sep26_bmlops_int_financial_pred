@@ -380,7 +380,7 @@ it works. Depends on: in brackets.
     it builds the image, a build from a tree with uncommitted changes says so, and a
     build `make` did not start records the code version as `unknown`
   - [x] every training run records its parameters, metrics, dataset version, code
-    version and model (1)
+    version, model and whether it was promoted (1)
   - [x] MLflow is the model store; the `models/` folder is removed (1)
 - [x] **4 Registry and promotion** (3; REQ-MOD-005, REQ-SVC-001/002)
   - [x] one registered model per security

@@ -189,10 +189,15 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
             }
         )
         logged = log_model(model, name="model", registered_model_name=model_name)
-    model_version = str(logged.registered_model_version)
-    if promoted:
-        client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
-        client.set_registered_model_alias(model_name, PRODUCTION_ALIAS, model_version)
+        model_version = str(logged.registered_model_version)
+        if promoted:
+            client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+            client.set_registered_model_alias(
+                model_name, PRODUCTION_ALIAS, model_version
+            )
+        # Set after the alias, so a run whose promotion failed never says "true"; a
+        # failure inside the run marks the run itself as failed in MLflow.
+        mlflow.set_tag("promoted", str(promoted).lower())
 
     # training_samples - 1 is the last training row, training_samples the first
     # evaluation row.

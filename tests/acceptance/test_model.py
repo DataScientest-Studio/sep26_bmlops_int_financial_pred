@@ -131,6 +131,27 @@ def test_training_records_parameters_metrics_versions_and_model(engine, settings
     assert loaded is not None
 
 
+def test_training_records_whether_its_model_was_promoted(engine, settings):
+    """REQ-MOD-004: a run records whether its model became the production model."""
+    symbol = SECURITIES[0].symbol
+    load_history(
+        engine,
+        standard_source(),
+        SECURITIES,
+        (),
+        settings.final_delay,
+        settings.history_start,
+    )
+    # The first model always becomes production; the second, trained on the same days,
+    # is no better, so production is kept.
+    first = train(engine, settings, symbol)
+    second = train(engine, settings, symbol)
+    first_run = _run_of(settings, symbol, first.model_version)
+    second_run = _run_of(settings, symbol, second.model_version)
+    promoted = (first_run.data.tags["promoted"], second_run.data.tags["promoted"])
+    assert promoted == ("true", "false")
+
+
 def test_training_leaves_out_a_provisional_latest_day(engine, settings):
     """REQ-MOD-001: the model is trained on final closes only."""
     security = SECURITIES[0]

@@ -225,7 +225,7 @@ TAGS: phase-2
 VERIFICATION: Test
 TITLE: Experiment tracking
 STATEMENT: >>>
-Every training run records its parameters, metrics, dataset version, code version and resulting model.
+Every training run records its parameters, metrics, dataset version, code version, resulting model and whether that model became the production model.
 <<<
 
 [REQUIREMENT]

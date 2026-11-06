@@ -315,9 +315,12 @@ and the project commands reach the server inside Docker at `http://mlflow:5000`.
 
 Each configured security has the registered model `forecast-<symbol>` (for example
 `forecast-AAPL.US`). Every training run is recorded, and its model is a new version of
-that registered model; the version with the alias `production` is the one `make predict`
-uses. While the replay database exists, training and `make predict` use
-`replay-forecast-<symbol>` instead (see [Replay](#replay)).
+that registered model. The version with the alias `production` is the security's
+production model, the one `make predict` uses. Each run carries the tag `promoted`:
+`true` when its model became the production model, `false` when it did not. The tag is
+not updated later: a run whose model has since been replaced still shows `true`. While
+the replay database exists, training and `make predict` use `replay-forecast-<symbol>`
+instead (see [Replay](#replay)).
 
 ### Object store
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) runs in Docker (`object-store`) as

@@ -155,7 +155,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: Every training run records its parameters, metrics, dataset version, code version and resulting model.
+**Statement**: Every training run records its parameters, metrics, dataset version, code version, resulting model and whether that model became the production model.
 
 ### Model promotion
 
