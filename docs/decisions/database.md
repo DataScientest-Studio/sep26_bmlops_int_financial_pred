@@ -27,7 +27,7 @@ Pros:
 - Ad-hoc questions about the product later ("which securities had the largest errors last month?") need no new code.
 
 Cons:
-- The schema is fixed: adding a column needs a change to the table. Mitigation: store the prediction features in one JSON column (PostgreSQL `jsonb`), so a new feature needs no table change.
+- The schema is fixed: adding a column needs a change to the table, a new input feature included; the first model's inputs are fixed, so this is accepted.
 - The team has to write SQL or use a library for it (SQLAlchemy).
 - Runs as a server: one more Compose service, with a data volume and a user and password from the environment.
 
@@ -41,10 +41,10 @@ Cons:
 - Predictions vs. actual outcomes has to be joined in Python or with an aggregation pipeline.
 - Duplicate protection and data types have to be set up explicitly (unique index, validation) instead of coming with the table.
 - A second database engine in the stack, next to the PostgreSQL server MLflow and Airflow still need.
-- The flexibility it offers is little use here: the price data has fixed columns, and the variable part (features) is covered by a JSON column in PostgreSQL.
+- The flexibility it offers is little use here: the price data and the first model's input features have fixed columns.
 
 ## Note on SQLite
 SQLite is probably not a good option: it is a single file without a server, while we want one server to serve several databases (project data, MLflow, Airflow) to several services at once. Concurrent writers to one SQLite file wait on each other's lock, and Airflow does not support SQLite outside development.
 
 ## Decision
-PostgreSQL, one container, with separate databases for the project data, MLflow and Airflow. Prices as a table keyed by (security, day); predictions as a table with the features in a `jsonb` column; actual outcomes joined by security and day.
+PostgreSQL, one container, with separate databases for the project data, MLflow and Airflow. Prices as a table keyed by (security, day); forecasts as the table `predictions`, one column per input feature; actual outcomes joined by security and day.

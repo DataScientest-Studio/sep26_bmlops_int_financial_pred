@@ -193,7 +193,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: The system stores every prediction with its input features, model version and time of request.
+**Statement**: The system stores every forecast it makes, through the API or a command, with its input features, the model version and the time of request.
 
 ### Access control
 
@@ -222,7 +222,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: Once a predicted day's actual quote is stored, the system records it against each prediction for that day and computes the production error.
+**Statement**: Once a predicted day's actual quote is stored, the system records it against each forecast for that day and computes the production error.
 
 ### One-command start
 
@@ -296,7 +296,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: On a configured schedule, the system compares logged prediction inputs with reference data, records the drift report and metrics, and starts the training pipeline when drift exceeds the configured threshold.
+**Statement**: On a configured schedule, the system compares the input features of stored forecasts with reference data, records the drift report and metrics, and starts the training pipeline when drift exceeds the configured threshold.
 
 ### Service metrics and dashboard
 

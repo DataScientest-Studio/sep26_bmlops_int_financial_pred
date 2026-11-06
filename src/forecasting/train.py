@@ -16,6 +16,7 @@ from sqlalchemy import Engine
 
 from forecasting.config import Settings
 from forecasting.datasets import dataset_version
+from forecasting.db import read_prices, read_splits
 from forecasting.evaluate import Evaluation, evaluate
 from forecasting.features import (
     CHANGE_DAYS,
@@ -24,7 +25,7 @@ from forecasting.features import (
     correct_for_splits,
 )
 from forecasting.load import is_final
-from forecasting.replay import REPLAY_PREFIX, read_history
+from forecasting.replay import REPLAY_PREFIX, history_database
 
 # A regression needs about ten training samples for each number it learns, one per
 # input plus one for the intercept, before its fit means anything (a common rule of
@@ -98,8 +99,9 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     # commands loop over the configured ones. is_final needs its exchange to know when
     # that exchange closes.
     exchange = settings.exchange_of(symbol)
-    history = read_history(engine, settings, symbol)
-    stored = history.prices
+    with history_database(engine, settings) as (database, replaying):
+        stored = read_prices(database, symbol)
+        splits = read_splits(database, symbol)
     # One True or False per row: is that day's close final? zip walks both columns side
     # by side. stored.loc[final] keeps the True rows, so a provisional close, which may
     # still change, never enters training.
@@ -109,7 +111,7 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     ]
     # correct_for_splits expresses the final days in the shares of the latest final
     # day; a split after that day has not happened for these rows yet.
-    prices = correct_for_splits(stored.loc[final], history.splits)
+    prices = correct_for_splits(stored.loc[final], splits)
     features = build_features(prices)
     target = build_target(prices)
     # A row is usable when every feature and the target are present: the first rows
@@ -150,8 +152,8 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         model.predict(evaluation_features), index=evaluation_target.index
     )
     evaluation = evaluate(evaluation_target, predicted, training_target)
-    model_name = registered_model_name(symbol, history.replaying)
-    experiment_name = REPLAY_EXPERIMENT_NAME if history.replaying else EXPERIMENT_NAME
+    model_name = registered_model_name(symbol, replaying)
+    experiment_name = REPLAY_EXPERIMENT_NAME if replaying else EXPERIMENT_NAME
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     mlflow.set_experiment(experiment_name)
     # The new model replaces production only if its error on the latest evaluation

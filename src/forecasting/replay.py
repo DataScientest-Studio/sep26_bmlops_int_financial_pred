@@ -5,7 +5,8 @@ runs and models apart; resetting the replay deletes the database and those runs 
 models.
 """
 
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date
 
 import pandas as pd
@@ -18,8 +19,6 @@ from forecasting.db import (
     create_database,
     database_exists,
     drop_database,
-    read_prices,
-    read_splits,
 )
 
 TABLES = ["prices", "splits", "dividends"]
@@ -100,46 +99,32 @@ def _copy(source: Connection, target: Connection, start: date, until: date) -> d
     return latest
 
 
-@dataclass(frozen=True)
-class History:
-    """Stored prices and splits of one security and the database they come from.
-
-    Attributes:
-        prices: Daily prices, oldest first.
-        splits: Splits, oldest first.
-        replaying: True if they come from the replay database.
-    """
-
-    prices: pd.DataFrame
-    splits: pd.DataFrame
-    replaying: bool
-
-
-def read_history(engine: Engine, settings: Settings, symbol: str) -> History:
-    """Read one security's prices and splits, from the replay database while it exists.
+@contextmanager
+def history_database(
+    engine: Engine, settings: Settings
+) -> Iterator[tuple[Engine, bool]]:
+    """Give the database training and forecasts use: the replay one while it exists.
 
     @relation(REQ-DAT-003, scope=function)
 
     Args:
-        engine: Engine of the project database, read when no replay database exists.
+        engine: Engine of the project database, given back when no replay database
+            exists.
         settings: Settings; `replay_database_url` names the replay database.
-        symbol: Ticker of the security.
 
-    Returns:
-        The prices and splits, and whether they come from the replay database.
+    Yields:
+        The engine of that database, and True if it is the replay database.
     """
-    replaying = database_exists(settings.replay_database_url)
-    source = connect(settings.replay_database_url) if replaying else engine
-    history = History(
-        prices=read_prices(source, symbol),
-        splits=read_splits(source, symbol),
-        replaying=replaying,
-    )
-    # Only the replay engine was created here; the project engine belongs to the caller.
-    if replaying:
-        source.dispose()
-
-    return history
+    if database_exists(settings.replay_database_url):
+        # Only the replay engine is created here; the project engine belongs to the
+        # caller.
+        replay = connect(settings.replay_database_url)
+        try:
+            yield replay, True
+        finally:
+            replay.dispose()
+    else:
+        yield engine, False
 
 
 def reset_replay(settings: Settings) -> None:

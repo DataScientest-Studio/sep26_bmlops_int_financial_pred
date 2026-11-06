@@ -53,6 +53,7 @@ interactive app and the drift checks are not built yet.
 │   ├── init/
 │   │   ├── dividends.sql        creates the dividends table where it is missing
 │   │   ├── loads.sql            creates the loads table: each security's latest fetch time
+│   │   ├── predictions.sql      creates the predictions table: one row per forecast
 │   │   ├── prices.sql           creates the prices table where it is missing
 │   │   └── splits.sql           creates the splits table where it is missing
 │   ├── queries/
@@ -101,7 +102,7 @@ interactive app and the drift checks are not built yet.
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
 │   ├── eodhd.py                 the EODHD data source
-│   ├── replay.py                replay of stored history into a database of its own, reading prices and splits from it while it exists, deleting it with the replay runs and models
+│   ├── replay.py                replay of stored history into a database of its own, which training and forecasts use while it exists, deleting it with the replay runs and models
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
@@ -140,11 +141,13 @@ API or the data service starts.
 `.venv/` with the packages pinned in `uv.lock`; tests and checks run from it.
 
 `make db` starts the database on `localhost`, at the port set in `.env`. Its data lives
-in a Docker volume and survives restarts. The tables `prices`, `splits`, `dividends` and
-`loads` are created on the first start. The Compose service `db-tables` runs the scripts
-in `db/init/` again at each start of the services; they only create the tables a
-database lacks, so an existing database gains a table added to `db/init/` without a
-reload. A change to a table that exists takes effect only on an empty volume
+in a Docker volume and survives restarts. The tables `prices`, `splits`, `dividends`,
+`loads` and `predictions` are created on the first start. The Compose service
+`db-tables` runs the scripts in `db/init/` again at each start of the services; they
+only create the tables a database lacks, so the member's own database gains a table
+added to `db/init/` without a reload. The replay database (see "Replay" below) gains it
+only once `make replay-reset` deletes the replay database and the next `make replay`
+creates it again. A change to a table that exists takes effect only on an empty volume
 (`docker compose down --volumes` deletes the data).
 
 `make load`, `make update`, `make replay`, `make replay-reset`, `make train`,
@@ -166,7 +169,7 @@ output, errors included.
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
 | `make replay-reset` | delete the replay database and the replay runs and models in MLflow, and remove for good whatever was deleted on the MLflow page; training and forecasts return to the member's own database and models, and the next `make replay` starts over from `REPLAY_START` |
 | `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
-| `make predict` | print the production model's forecast of the next trading day for each configured security |
+| `make predict` | print the production model's forecast of the next trading day for each configured security and store each forecast in the table `predictions`, as the API's `/predict` does |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
 | `make acceptance` | start the database, then run the black-box tests of the requirements and the integration tests against the database; the passed count shows progress |
@@ -226,10 +229,11 @@ provisional one, and then the next stored day. Each run copies all or nothing. O
 latest stored day is copied, nothing is left to replay. While the replay database
 exists, training and forecasts, `make train` and `make predict` included, use it instead
 of the database it copies from, and keep their runs and models apart in MLflow: runs in
-the experiment `replay-forecasting`, models as `replay-forecast-<symbol>`.
-`make replay-reset` deletes the replay database and these runs and models, model files
-included, to start over. It also removes for good whatever was deleted on the MLflow
-page, and it returns training and forecasts to the member's own database and models.
+the experiment `replay-forecasting`, models as `replay-forecast-<symbol>`. Their
+forecasts are stored in the replay database. `make replay-reset` deletes the replay
+database with its forecasts, and these runs and models, model files included, to start
+over. It also removes for good whatever was deleted on the MLflow page, and it returns
+training and forecasts to the member's own database and models.
 
 ### Scheduled pipelines
 Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on

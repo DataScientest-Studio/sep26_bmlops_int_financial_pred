@@ -253,7 +253,7 @@ API (see "Demo app" in "Decision proposals").
   latest drift check.
 
 Live demo: replay advances the simulated calendar by a few trading days and the chain
-runs on its own — new quotes are loaded, predictions logged, drift checked, the model
+runs on its own — new quotes are loaded, forecasts stored, drift checked, the model
 retrained and promoted if it is better — visible in the app, MLflow and Grafana.
 
 | Period | Milestone | Content |
@@ -476,7 +476,7 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
 ## Phase 3 plan — the loop closes and is monitored
 The milestone "Closed loop and monitoring" of the roadmap (Oct 30–Nov 6).
 
-Goal: the running system watches itself. Every prediction is logged and later compared
+Goal: the running system watches itself. Every forecast is stored and later compared
 with the actual price, drift in the data starts retraining, the API's use and the
 freshness of the data are on a dashboard, and a demo app shows the forecasts.
 
@@ -494,17 +494,17 @@ in brackets.
   - [x] Prometheus and Grafana in Compose (`make monitoring`) with the dashboard "API":
     requests per second, response time, error rate, trading days behind
   - [ ] the latest drift share on the dashboard (5)
-- [ ] **3 Prediction log** (1; REQ-SVC-003): every prediction is stored with its input
-  features, model version and time of request
+- [x] **3 Prediction log** (1; REQ-SVC-003): every forecast, made through the API or a
+  command, is stored with its input features, model version and time of request
 - [ ] **4 Outcome collection** (3; REQ-AUT-002): once a predicted day's actual quote is
-  stored, it is recorded against each prediction for that day and the production error
+  stored, it is recorded against each forecast for that day and the production error
   is computed
 - [ ] **5 Drift checks** (REQ-MON-001, REQ-MON-002)
   - [ ] before training, recent data is compared with historical reference data; the
     drift report and metrics are recorded with the training run, and the model is
     retrained when drift exceeds the configured threshold (1; REQ-MON-001)
-  - [ ] on a configured schedule, the logged prediction inputs are compared with
-    reference data; the report and metrics are recorded, and the training pipeline
+  - [ ] on a configured schedule, the input features of stored forecasts are compared
+    with reference data; the report and metrics are recorded, and the training pipeline
     starts when drift exceeds the configured threshold (1, 3; REQ-MON-002)
 - [ ] **6 Alerts** (REQ-MON-004, REQ-MON-005)
   - [x] Grafana raises an alert when the API's error rate crosses its configured
