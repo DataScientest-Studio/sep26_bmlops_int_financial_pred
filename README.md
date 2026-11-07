@@ -102,11 +102,11 @@ interactive app and the drift checks are not built yet.
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
 │   ├── eodhd.py                 the EODHD data source
-│   ├── replay.py                replay of stored history into a database of its own, which training and forecasts use while it exists, deleting it with the replay runs and models
+│   ├── replay.py                replay of stored history into a database of its own, which training and forecasts use while it exists, and so do the API's price history and model results, deleting it with the replay runs and models
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
-│   ├── predict.py               next-trading-day forecast
+│   ├── predict.py               forecasts, recent closes and production model results
 │   ├── monitoring.py            drift checks (not built yet)
 │   └── api/                     FastAPI app, endpoints, request and response bodies, the numbers at /metrics
 ├── tests/
@@ -167,7 +167,7 @@ output, errors included.
 | `make db-shell` | SQL prompt in the database |
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
-| `make replay-reset` | delete the replay database and the replay runs and models in MLflow, and remove for good whatever was deleted on the MLflow page; training and forecasts return to the member's own database and models, and the next `make replay` starts over from `REPLAY_START` |
+| `make replay-reset` | delete the replay database and the replay runs and models in MLflow, and remove for good whatever was deleted on the MLflow page; training, forecasts and the API's price history and model results return to the member's own database and models, and the next `make replay` starts over from `REPLAY_START` |
 | `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
 | `make predict` | print the production model's forecast of the next trading day for each configured security and store each forecast in the table `predictions`, as the API's `/predict` does |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
@@ -227,13 +227,17 @@ lie between the first and the latest stored day. Each later run copies the repla
 database's latest day again, so a price that has become final since replaces the
 provisional one, and then the next stored day. Each run copies all or nothing. Once the
 latest stored day is copied, nothing is left to replay. While the replay database
-exists, training and forecasts, `make train` and `make predict` included, use it instead
-of the database it copies from, and keep their runs and models apart in MLflow: runs in
-the experiment `replay-forecasting`, models as `replay-forecast-<symbol>`. Their
-forecasts are stored in the replay database. `make replay-reset` deletes the replay
-database with its forecasts, and these runs and models, model files included, to start
-over. It also removes for good whatever was deleted on the MLflow page, and it returns
-training and forecasts to the member's own database and models.
+exists, training and forecasts (`make train` and `make predict` included) use it instead
+of the database it copies from, and so do the API's price history and model results (the
+production model's scores next to the baselines'). Training keeps the replay runs and
+models apart from the member's own in MLflow: runs in the experiment
+`replay-forecasting`, models as `replay-forecast-<symbol>`. Forecasts and model results
+use those replay models, so during a replay the model results are those of the replay's
+production model. Forecasts are stored in the replay database. `make replay-reset`
+deletes the replay database with its forecasts, and these runs and models, model files
+included, to start over. It also removes for good whatever was deleted on the MLflow
+page, and it returns training, forecasts and the API's price history and model results
+to the member's own database and models.
 
 ### Scheduled pipelines
 Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on
@@ -370,7 +374,7 @@ The dashboard "API" in the folder "Financial forecasting" shows these panels:
 
 - requests per second, per route;
 - the response time that 95% of requests stay under, per route;
-- the error rate; a 404 for an unknown security is not an error;
+- the error rate; a 404 (unknown security, or no production model yet) is not an error;
 - the trading days behind, per security: green while up to date, red once behind.
 
 Grafana's data source and the dashboard come from the files in `grafana/`, and Grafana

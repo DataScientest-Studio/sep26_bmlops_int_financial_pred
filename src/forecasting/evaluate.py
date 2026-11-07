@@ -28,12 +28,15 @@ class Evaluation:
         model: Scores of the trained model.
         persistence: Scores of the forecast "no change".
         mean_change: Scores of the historical mean change of the training days.
+        mean_change_forecast: The change the mean-change baseline forecasts for every
+            day: the mean change of the training days.
         days: Number of evaluation days.
     """
 
     model: Scores
     persistence: Scores
     mean_change: Scores
+    mean_change_forecast: float
     days: int
 
 
@@ -51,14 +54,16 @@ def evaluate(
             baseline.
 
     Returns:
-        The scores of the model, persistence and the mean change.
+        The scores of the model, persistence and the mean change, the mean-change
+        forecast and the number of evaluation days.
     """
     # Persistence forecasts "tomorrow's close equals today's", a change of 0.0 on every
     # day; mean change forecasts the training days' mean change on every day.
     # index=actual.index gives both baselines the row labels of actual: pandas lines
     # Series up by label, not by position, so each day is compared with its own day.
     persistence = pd.Series(0.0, index=actual.index)
-    mean_change = pd.Series(training_target.mean(), index=actual.index)
+    mean_change_forecast = float(training_target.mean())
+    mean_change = pd.Series(mean_change_forecast, index=actual.index)
     # Predicting 0 misses by the whole change, so this is the MAE of persistence, which
     # every skill is measured against.
     persistence_mae = actual.abs().mean()
@@ -69,6 +74,7 @@ def evaluate(
         model=_scores(actual, predicted, persistence_mae),
         persistence=_scores(actual, persistence, persistence_mae),
         mean_change=_scores(actual, mean_change, persistence_mae),
+        mean_change_forecast=mean_change_forecast,
         days=len(actual),
     )
 

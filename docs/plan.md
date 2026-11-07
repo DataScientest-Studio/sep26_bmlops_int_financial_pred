@@ -71,9 +71,10 @@ every trading day. Price data never leaves a member's machine and is never commi
 ### API access
 HTTP basic authentication against a `users` table in the project database (passwords
 stored as bcrypt hashes, see `decisions/password-hashing.md`; role `user` or `admin`).
-Users call `predict/`; admins also call `training/`, the model metrics and a few
-user-management endpoints (add, list, remove). The demo app logs in as a user. Builds on
-the course's API security exercise.
+Users call `predict/` and the routes that list the securities and return their price
+history and model results; admins also call `training/` and a few user-management
+endpoints (add, list, remove). The web app logs in as a user. Builds on the course's
+API security exercise.
 
 ### Test strategy
 requirements first. Each requirement names how it is checked: Test, Demonstration or
@@ -220,7 +221,7 @@ session does not fit beside a full daily update on the free tier.
 To be decided by the team.
 - Secured entry point (phase 3, after the required phase 3 items; the kick-off deck
   lists "Secured APIs" and "light scalability" for phase 3, the coach lists API security
-  as optional): Nginx in front of the API and the demo app as the only published entry
+  as optional): Nginx in front of the API and the web app as the only published entry
   point, with HTTPS (self-signed certificate, since the system runs locally), rate
   limits on `predict/` and `training/`, and requests spread over several API instances.
   Alternatives:
@@ -232,7 +233,7 @@ To be decided by the team.
   - Access control only (REQ-SVC-004), no encryption: no extra work; enough while
     everything runs on one machine (REQ-CON-002), but the password travels readable over
     any network.
-- Demo app: the app the jury sees at the defense; it calls the model API, and the
+- Web app: the app the jury sees at the defense; it calls the model API, and the
   presentation can run inside it. Any technology is accepted. Alternatives:
   - Streamlit (proposed): pure Python, as in the course material and past group
     projects; quick to build, with charts included.
@@ -244,8 +245,8 @@ To be decided by the team.
 ## Roadmap
 Team setup and areas: `docs/team.md`.
 
-Target application, as the jury sees it at the defense: a demo app that calls the model
-API (see "Demo app" in "Decision proposals").
+Target application, as the jury sees it at the defense: a web app that calls the model
+API (see "Web app" in "Decision proposals").
 - Pick a security; see its next-day forecast with the model version, next to both
   baselines; the "not investment advice" notice always visible.
 - A history chart of past forecasts against the actual outcomes.
@@ -261,10 +262,10 @@ retrained and promoted if it is better — visible in the app, MLflow and Grafan
 | until Mon Oct 12 (coach meeting 12:00) | Foundations: a clone plus `make` gives a database with history, a trained baseline and an API answering `predict/` | "Phase 1 plan" below; roadmap and team setup agreed |
 | Oct 13–22 (coach meeting) | Phase 1 finished and the first phase 2 piece | open items of the "Phase 1 plan"; the agreed "Phase 2 plan" |
 | Oct 23–29 | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, object store, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes and the code's commit in MLflow; items in "Phase 2 plan" |
-| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with API usage, alerts and the retraining webhook, first demo app version; items in "Phase 3 plan" |
+| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with API usage, alerts and the retraining webhook, first web app version; items in "Phase 3 plan" |
 | Nov 7–11 | Feature freeze Nov 11 | tests, README and API docs, check from a fresh clone, demo script |
 | Thu Nov 12 | Mock defense call | full demo as at the defense |
-| Nov 13–15 | Polish | fixes from the mock defense, presentation (slides or in the demo app) |
+| Nov 13–15 | Polish | fixes from the mock defense, presentation (slides or in the web app) |
 | Mon Nov 16 | Coach meeting: phase 3 check | full demo; the coach's findings become the fix list |
 | Nov 17–22 | Fix and rehearse | fixes from the coach meeting, 1–2 rehearsals with equal speaking time |
 | about Mon Nov 23 | Defense | one week after the coach meeting; the exact day is set by the coach |
@@ -478,7 +479,7 @@ The milestone "Closed loop and monitoring" of the roadmap (Oct 30–Nov 6).
 
 Goal: the running system watches itself. Every forecast is stored and later compared
 with the actual price, drift in the data starts retraining, the API's use and the
-freshness of the data are on a dashboard, and a demo app shows the forecasts.
+freshness of the data are on a dashboard, and a web app shows the forecasts.
 
 Read the boxes as in the Phase 1 plan: ticked is done, open is still to do. Depends on:
 in brackets.
@@ -513,12 +514,19 @@ in brackets.
     final when the latest load ran, or when the daily update is missed (2; REQ-MON-004)
   - [ ] an alert configured to start training calls a webhook that starts the training
     pipeline (1; REQ-MON-005)
-- [ ] **7 Demo app** (1; REQ-APP-001, REQ-APP-002, REQ-APP-003): the forecast view, the
-  notice "not investment advice" on every page and the model results next to the
-  baselines
+- [ ] **7 Web app** (1; REQ-SVC-001, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007,
+  REQ-APP-001, REQ-APP-002, REQ-APP-003)
+  - [x] the API lists the configured securities, returns a security's recent closes and
+    its production model's results next to the baselines, and refuses a forecast for a
+    security without a production model (REQ-SVC-001, REQ-SVC-005, REQ-SVC-006,
+    REQ-SVC-007)
+  - [ ] the web app shows the forecast view, the notice "not investment advice" on
+    every page and the model results next to the baselines (REQ-APP-001, REQ-APP-002,
+    REQ-APP-003)
 - [ ] **8 Acceptance tests of phase 3**: written before the code of each item, for
-  REQ-SVC-003, REQ-AUT-002, REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005,
-  REQ-APP-001, REQ-APP-002 and REQ-APP-003
+  REQ-SVC-001, REQ-SVC-003, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007, REQ-AUT-002,
+  REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001, REQ-APP-002 and
+  REQ-APP-003
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings,

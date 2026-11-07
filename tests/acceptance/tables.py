@@ -1,6 +1,8 @@
-"""Helpers of the acceptance tests that fill the database and read its tables."""
+"""Acceptance-test helpers that fill the database, read its tables and MLflow runs."""
 
 import pandas as pd
+from mlflow import MlflowClient
+from mlflow.entities import Run
 from sqlalchemy import Engine, text
 
 from forecasting.config import Settings
@@ -13,6 +15,15 @@ def stored_table(engine: Engine, table: str) -> pd.DataFrame:
     query = text(f"SELECT * FROM {table} ORDER BY symbol, day")
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
+
+
+def run_of(settings: Settings, symbol: str, model_version: str) -> Run:
+    """Read the MLflow run that produced one version of a security's model."""
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    version = client.get_model_version(f"forecast-{symbol}", model_version)
+    assert version.run_id is not None
+
+    return client.get_run(version.run_id)
 
 
 def load_history_around_start(engine: Engine, settings: Settings) -> pd.Series:

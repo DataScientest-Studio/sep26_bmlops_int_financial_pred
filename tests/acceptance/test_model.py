@@ -4,8 +4,6 @@ from datetime import date, timedelta
 
 import pandas as pd
 import pytest
-from mlflow import MlflowClient
-from mlflow.entities import Run
 from mlflow.sklearn import load_model
 
 from forecasting.datasets import dataset_version
@@ -16,21 +14,13 @@ from forecasting.load import load_history
 from forecasting.predict import predict
 from forecasting.trading_calendar import session_close
 from forecasting.train import train
+from tests.acceptance.tables import run_of
 from tests.fakes import SECURITIES, FakeSource, price_history, standard_source
 
 pytestmark = pytest.mark.acceptance
 
 # Factor of each day's close over the day before in a steadily rising year: 2% a day.
 DAILY_RISE = 1.02
-
-
-def _run_of(settings, symbol: str, model_version: str) -> Run:
-    """Read the MLflow run that produced one version of a security's model."""
-    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
-    version = client.get_model_version(f"forecast-{symbol}", model_version)
-    assert version.run_id is not None
-
-    return client.get_run(version.run_id)
 
 
 def test_target_is_next_day_close_to_close_change():
@@ -116,7 +106,7 @@ def test_training_records_parameters_metrics_versions_and_model(engine, settings
     )
     expected_dataset_version = dataset_version(settings, symbol, trained_rows)
     result = train(engine, settings, symbol)
-    run = _run_of(settings, symbol, result.model_version)
+    run = run_of(settings, symbol, result.model_version)
     assert run.data.params["dataset_version"] == expected_dataset_version
     assert run.data.params["code_version"] == settings.code_version
     assert run.data.params["evaluation_days"] == str(settings.evaluation_days)
@@ -146,8 +136,8 @@ def test_training_records_whether_its_model_was_promoted(engine, settings):
     # is no better, so production is kept.
     first = train(engine, settings, symbol)
     second = train(engine, settings, symbol)
-    first_run = _run_of(settings, symbol, first.model_version)
-    second_run = _run_of(settings, symbol, second.model_version)
+    first_run = run_of(settings, symbol, first.model_version)
+    second_run = run_of(settings, symbol, second.model_version)
     promoted = (first_run.data.tags["promoted"], second_run.data.tags["promoted"])
     assert promoted == ("true", "false")
 
@@ -174,7 +164,7 @@ def test_training_leaves_out_a_provisional_latest_day(engine, settings):
     )
     expected_dataset_version = dataset_version(settings, security.symbol, final_rows)
     result = train(engine, settings, security.symbol)
-    run = _run_of(settings, security.symbol, result.model_version)
+    run = run_of(settings, security.symbol, result.model_version)
     assert run.data.params["dataset_version"] == expected_dataset_version
 
 

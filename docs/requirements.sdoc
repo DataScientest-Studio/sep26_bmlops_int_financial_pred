@@ -134,7 +134,7 @@ TAGS: phase-2
 VERIFICATION: Test
 TITLE: Historical replay
 STATEMENT: >>>
-The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged. While the replay database exists, training and forecasts use it and keep their runs and models apart from the member's own; resetting the replay deletes the replay database and those runs and models.
+The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged. While the replay database exists, training, forecasts, price history and model results use it, and training and forecasts keep their runs and models apart from the member's own; resetting the replay deletes the replay database and those runs and models.
 <<<
 RATIONALE: >>>
 Shows the complete loop of ingestion, drift check, retraining and promotion within minutes instead of weeks.
@@ -250,7 +250,7 @@ TAGS: phase-1
 VERIFICATION: Test
 TITLE: Prediction endpoint
 STATEMENT: >>>
-The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched. A symbol that is not a configured security is refused.
+The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched. A symbol that is not a configured security, or a configured security without a production model, is refused.
 <<<
 
 [REQUIREMENT]
@@ -281,6 +281,36 @@ VERIFICATION: Test
 TITLE: Access control
 STATEMENT: >>>
 The API answers only authenticated callers; starting a training and managing users are reserved for administrators.
+<<<
+
+[REQUIREMENT]
+UID: REQ-SVC-005
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Securities endpoint
+STATEMENT: >>>
+The API lists every configured security.
+<<<
+
+[REQUIREMENT]
+UID: REQ-SVC-006
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Price history endpoint
+STATEMENT: >>>
+The API returns the closes of a configured security's latest stored trading days, oldest first and corrected for splits: as many days as the caller asks for, all of them where fewer are stored; the latest close may be provisional. A symbol that is not a configured security is refused.
+<<<
+
+[REQUIREMENT]
+UID: REQ-SVC-007
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Model results endpoint
+STATEMENT: >>>
+The API returns, for a configured security, the version of its production model and the number of evaluation days of that model's training run. It also returns the MAE, skill against persistence and directional accuracy of the model and of both baselines on those days. Where that run recorded it, it also returns the change that the mean-change baseline forecasts. A symbol that is not a configured security, or a configured security without a production model, is refused.
 <<<
 
 [[/SECTION]]

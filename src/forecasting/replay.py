@@ -1,8 +1,9 @@
 """Replay of stored history into a database of its own, one trading day per run.
 
-While the replay database exists, training and forecasts read it and keep their MLflow
-runs and models apart; resetting the replay deletes the database and those runs and
-models.
+While the replay database exists, training, forecasts and price history read it.
+Training keeps its MLflow runs and models apart from the project's own, and forecasts
+and model results use those replay models; resetting the replay deletes the database
+and those runs and models.
 """
 
 from collections.abc import Iterator
@@ -103,7 +104,10 @@ def _copy(source: Connection, target: Connection, start: date, until: date) -> d
 def history_database(
     engine: Engine, settings: Settings
 ) -> Iterator[tuple[Engine, bool]]:
-    """Give the database training and forecasts use: the replay one while it exists.
+    """Give the replay database while it exists, else the project database.
+
+    Training, forecasts, price history and model results go through it, so while it
+    exists they use the replay database and the replay models.
 
     @relation(REQ-DAT-003, scope=function)
 

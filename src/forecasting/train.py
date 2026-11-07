@@ -31,6 +31,8 @@ from forecasting.replay import REPLAY_PREFIX, history_database
 # input plus one for the intercept, before its fit means anything (a common rule of
 # thumb in regression). More inputs therefore need more samples.
 SAMPLES_PER_INPUT = 10
+# MLflow's error codes for "no model of that name" and "no version has that alias".
+MISSING_MODEL_ERRORS = ("RESOURCE_DOES_NOT_EXIST", "INVALID_PARAMETER_VALUE")
 EXPERIMENT_NAME = "forecasting"
 REPLAY_EXPERIMENT_NAME = f"{REPLAY_PREFIX}{EXPERIMENT_NAME}"
 PRODUCTION_ALIAS = "production"
@@ -188,6 +190,7 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
                 "mean_change_directional_accuracy": (
                     evaluation.mean_change.directional_accuracy
                 ),
+                "mean_change_forecast": evaluation.mean_change_forecast,
             }
         )
         logged = log_model(model, name="model", registered_model_name=model_name)
@@ -233,7 +236,7 @@ def _is_better_than_production(
     try:
         production_model: Any = load_model(f"models:/{model_name}@{PRODUCTION_ALIAS}")
     except MlflowException as error:
-        if error.error_code in ("RESOURCE_DOES_NOT_EXIST", "INVALID_PARAMETER_VALUE"):
+        if error.error_code in MISSING_MODEL_ERRORS:
             return True
         raise
     # The production model forecasts the evaluation days the new model was scored on.

@@ -14,7 +14,7 @@ Each member owns one area from phase 1 to the defense and presents it at the def
 |---|---|---|---|---|
 | Data | [team member A, B, or C] | database, one-time load | daily ingestion, replay, trading calendar, DVC (copies in the object store), ingestion DAG | prediction log tables, outcome collection |
 | Model | [team member A, B, or C] | training and prediction functions, baselines | MLflow tracking of training runs and registry, promotion rule, training DAG | Evidently drift DAGs, triggered retraining |
-| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, object store, MLflow server, API access (users and roles) | Prometheus and Grafana, alerts, demo app |
+| Service | [team member A, B, or C] | FastAPI, tests | Compose stack, object store, MLflow server, API access (users and roles) | Prometheus and Grafana, alerts, web app |
 
 Shared by all: README and docs, the presentation, the interfaces between areas (agreed together, see `plan.md`).
 

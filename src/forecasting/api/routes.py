@@ -1,18 +1,31 @@
 """Endpoints of the API."""
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query
 
 from forecasting.api.dependencies import EngineDep, SettingsDep
 from forecasting.api.schemas import (
+    CloseResponse,
     ForecastResponse,
+    ModelResponse,
+    ScoresResponse,
     SecurityRequest,
     TrainingResponse,
 )
 from forecasting.config import Settings
-from forecasting.predict import predict
+from forecasting.predict import (
+    NoProductionModel,
+    predict,
+    production_results,
+    recent_closes,
+)
 from forecasting.train import train
 
 router = APIRouter()
+# Most trading days of closes one history request may ask for, about four years; keeps
+# one answer small.
+MOST_HISTORY_DAYS = 1000
 
 
 def _refuse_unknown(symbol: str, settings: Settings) -> None:
@@ -43,12 +56,16 @@ def predict_endpoint(
 ) -> ForecastResponse:
     """Return the production model's forecast for the next trading day.
 
-    A symbol that is not a configured security gets 404.
+    A symbol that is not a configured security, or a security without a production
+    model, gets 404.
 
     @relation(REQ-SVC-001, scope=function)
     """
     _refuse_unknown(request.symbol, settings)
-    forecast = predict(engine, settings, request.symbol)
+    try:
+        forecast = predict(engine, settings, request.symbol)
+    except NoProductionModel as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
 
     return ForecastResponse(**vars(forecast))
 
@@ -74,4 +91,63 @@ def training_endpoint(
         model_mae=result.evaluation.model.mae,
         persistence_mae=result.evaluation.persistence.mae,
         mean_change_mae=result.evaluation.mean_change.mae,
+    )
+
+
+@router.get("/securities", response_model=list[str])
+def securities_endpoint(settings: SettingsDep) -> list[str]:
+    """List the configured securities a forecast can be asked for.
+
+    @relation(REQ-SVC-005, scope=function)
+    """
+    return [security.symbol for security in settings.securities]
+
+
+@router.get("/securities/{symbol}/history", response_model=list[CloseResponse])
+def history_endpoint(
+    symbol: str,
+    days: Annotated[int, Query(ge=1, le=MOST_HISTORY_DAYS)],
+    engine: EngineDep,
+    settings: SettingsDep,
+) -> list[CloseResponse]:
+    """Return the closes of the security's latest stored trading days.
+
+    A symbol that is not a configured security gets 404.
+
+    @relation(REQ-SVC-006, scope=function)
+    """
+    _refuse_unknown(symbol, settings)
+    closes = recent_closes(engine, settings, symbol, days)
+
+    return [
+        CloseResponse(day=day, close=close)
+        for day, close in zip(closes["day"], closes["close"])
+    ]
+
+
+@router.get("/securities/{symbol}/model", response_model=ModelResponse)
+def model_endpoint(
+    symbol: str, engine: EngineDep, settings: SettingsDep
+) -> ModelResponse:
+    """Return the security's production model with its results next to the baselines.
+
+    A symbol that is not a configured security, or a security without a production
+    model, gets 404.
+
+    @relation(REQ-SVC-007, scope=function)
+    """
+    _refuse_unknown(symbol, settings)
+    try:
+        results = production_results(engine, settings, symbol)
+    except NoProductionModel as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return ModelResponse(
+        symbol=results.symbol,
+        model_version=results.model_version,
+        evaluation_days=results.evaluation_days,
+        model=ScoresResponse(**vars(results.model)),
+        persistence=ScoresResponse(**vars(results.persistence)),
+        mean_change=ScoresResponse(**vars(results.mean_change)),
+        mean_change_forecast=results.mean_change_forecast,
     )

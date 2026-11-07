@@ -36,13 +36,13 @@ sequenceDiagram
 ```
 
 ## Prediction pipeline (chart n°2, `course-material/training_pipeline.png`) — real-time
-Services: Demo App (Streamlit) · Model API (FastAPI) · MLflow.
+Services: Web App (Streamlit) · Model API (FastAPI) · MLflow.
 - App event loop sends input → API `/predict` → API queries MLflow for the prod model → returns prediction to app.
 - Phase 3 extension (forum): API also stores prediction + features in DB; drift DAG reads them.
 
 ```mermaid
 sequenceDiagram
-    participant App as Demo App
+    participant App as Web App
     participant API as Model API
     participant ML as MLflow
 

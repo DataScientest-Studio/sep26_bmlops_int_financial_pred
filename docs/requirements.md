@@ -77,7 +77,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Test
 
-**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged. While the replay database exists, training and forecasts use it and keep their runs and models apart from the member's own; resetting the replay deletes the replay database and those runs and models.
+**Statement**: The system can replay stored history one trading day at a time, as if each day were arriving live, into a database of its own, at an interval set by the operator: one trading day every 10 to 60 seconds. The history it replays from stays unchanged. While the replay database exists, training, forecasts, price history and model results use it, and training and forecasts keep their runs and models apart from the member's own; resetting the replay deletes the replay database and those runs and models.
 
 **Rationale**: Shows the complete loop of ingestion, drift check, retraining and promotion within minutes instead of weeks.
 
@@ -175,7 +175,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-1 \
 **VERIFICATION**: Test
 
-**Statement**: The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched. A symbol that is not a configured security is refused.
+**Statement**: The API returns the production model's forecast for the next trading day of a requested security, together with the model version that produced it, the close the forecast starts from and the time that close was fetched. A symbol that is not a configured security, or a configured security without a production model, is refused.
 
 ### Training endpoint
 
@@ -203,6 +203,33 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **VERIFICATION**: Test
 
 **Statement**: The API answers only authenticated callers; starting a training and managing users are reserved for administrators.
+
+### Securities endpoint
+
+**UID**: REQ-SVC-005 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Test
+
+**Statement**: The API lists every configured security.
+
+### Price history endpoint
+
+**UID**: REQ-SVC-006 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Test
+
+**Statement**: The API returns the closes of a configured security's latest stored trading days, oldest first and corrected for splits: as many days as the caller asks for, all of them where fewer are stored; the latest close may be provisional. A symbol that is not a configured security is refused.
+
+### Model results endpoint
+
+**UID**: REQ-SVC-007 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Test
+
+**Statement**: The API returns, for a configured security, the version of its production model and the number of evaluation days of that model's training run. It also returns the MAE, skill against persistence and directional accuracy of the model and of both baselines on those days. Where that run recorded it, it also returns the change that the mean-change baseline forecasts. A symbol that is not a configured security, or a configured security without a production model, is refused.
 
 ## Automation
 
