@@ -38,6 +38,14 @@ dev = [
     "ruff>=0.16.10",
     "strictdoc>=0.30.4",
 ]
+webapp = [
+    "httpx2>=2.13.1",
+    "pandas>=3.0.6",
+    "streamlit>=1.66.1",
+]
+
+[tool.uv]
+default-groups = ["dev", "webapp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -49,7 +57,7 @@ markers = [
 ]
 
 [tool.pyright]
-include = ["src", "tests"]
+include = ["src", "tests", "webapp"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "D"]

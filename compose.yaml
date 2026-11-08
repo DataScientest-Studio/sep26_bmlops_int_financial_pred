@@ -116,6 +116,29 @@ services:
       mlflow:
         condition: service_healthy
 
+  # The web app on 127.0.0.1; it reads everything through the API.
+  webapp:
+    build:
+      context: .
+      dockerfile: webapp/Dockerfile
+    image: financial-prediction-webapp:local
+    environment:
+      API_URL: http://api:8000
+    ports:
+      - "127.0.0.1:${WEBAPP_PORT:?set in .env}:8501"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8501/_stcore/health")
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    depends_on:
+      api:
+        condition: service_healthy
+
   # Runs the load and the replay for the scheduled pipelines; reachable only inside
   # Compose, so no port is published on the host.
   data:

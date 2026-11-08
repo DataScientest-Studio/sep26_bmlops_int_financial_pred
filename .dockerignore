@@ -1,4 +1,4 @@
-# The image gets only what it is built from; everything else, .env included, stays out.
+# Each image gets only what it is built from; everything else, .env included, stays out.
 *
 !pyproject.toml
 !uv.lock
@@ -7,4 +7,5 @@
 !src/
 !db/init/
 !tools/run-as-owner.sh
+!webapp/
 **/__pycache__/

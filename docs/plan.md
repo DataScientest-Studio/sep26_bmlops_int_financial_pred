@@ -23,6 +23,7 @@ the table.
 | Better model | a new model replaces a security's production model only if its MAE on the latest evaluation days (`evaluation_days` in `config/training.toml`) is lower than the production model's on the same days; a tie keeps the production model; a security's first model always becomes its production model | Built | Nov 5, 2026 9) | REQ-MOD-005, [Better model](#better-model) |
 | Package and login | Python package `forecasting`; development login `admin`/`admin` in `.env.example`, for local use only | Built | Oct 12, 2026 1) | — |
 | Model serving | FastAPI; BentoML is not used | Coach feedback | Oct 15, 2026 2) | — |
+| Web app | Streamlit, in a service of its own that reads everything through the API | Decided (Tobias) | Nov 7, 2026 10) | REQ-APP-001–003 |
 | Roadmap | milestones and phase plans as written in this plan | Decided (Tobias) | Oct 19, 2026 3) | [Roadmap](#roadmap) |
 | Reference securities | six stocks and two market indices, as configured in `config/securities.toml` | Decided (Tobias) | Oct 19, 2026 3) | [Reference securities](#reference-securities) |
 | Objectives and key metrics | as drafted in `docs/requirements.sdoc` | Decided (Tobias) | Oct 19, 2026 3) | `requirements.md`, "Objectives", "Key metrics" |
@@ -62,6 +63,8 @@ coordinator, Oct 22, 2026.
 
 9\) Decided by Tobias as coordinator, Nov 5, 2026: the model's inputs, corrected for
 splits; the model choice and the better-model rule, as built.
+
+10\) Decided by Tobias as coordinator, Nov 7, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private
@@ -233,22 +236,14 @@ To be decided by the team.
   - Access control only (REQ-SVC-004), no encryption: no extra work; enough while
     everything runs on one machine (REQ-CON-002), but the password travels readable over
     any network.
-- Web app: the app the jury sees at the defense; it calls the model API, and the
-  presentation can run inside it. Any technology is accepted. Alternatives:
-  - Streamlit (proposed): pure Python, as in the course material and past group
-    projects; quick to build, with charts included.
-  - Small web app (an HTML page served by FastAPI): no extra framework; layout and
-    charts are written by hand.
-  - Gradio: as quick as Streamlit, but aimed at a single model demo; weaker for pages
-    with price history and model metrics.
 
 ## Roadmap
 Team setup and areas: `docs/team.md`.
 
 Target application, as the jury sees it at the defense: a web app that calls the model
-API (see "Web app" in "Decision proposals").
-- Pick a security; see its next-day forecast with the model version, next to both
-  baselines; the "not investment advice" notice always visible.
+API (see "Web app" in "Decisions").
+- Pick a security; see its next-trading-day forecast with the model version, next to
+  both baselines; the "not investment advice" notice always visible.
 - A history chart of past forecasts against the actual outcomes.
 - A status panel: latest stored quote, latest training run, current production model,
   latest drift check.
@@ -514,19 +509,18 @@ in brackets.
     final when the latest load ran, or when the daily update is missed (2; REQ-MON-004)
   - [ ] an alert configured to start training calls a webhook that starts the training
     pipeline (1; REQ-MON-005)
-- [ ] **7 Web app** (1; REQ-SVC-001, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007,
+- [x] **7 Web app** (1; REQ-SVC-001, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007,
   REQ-APP-001, REQ-APP-002, REQ-APP-003)
   - [x] the API lists the configured securities, returns a security's recent closes and
     its production model's results next to the baselines, and refuses a forecast for a
     security without a production model (REQ-SVC-001, REQ-SVC-005, REQ-SVC-006,
     REQ-SVC-007)
-  - [ ] the web app shows the forecast view, the notice "not investment advice" on
+  - [x] the web app shows the forecast view, the notice "not investment advice" on
     every page and the model results next to the baselines (REQ-APP-001, REQ-APP-002,
     REQ-APP-003)
 - [ ] **8 Acceptance tests of phase 3**: written before the code of each item, for
   REQ-SVC-001, REQ-SVC-003, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007, REQ-AUT-002,
-  REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001, REQ-APP-002 and
-  REQ-APP-003
+  REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001 and REQ-APP-003
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings,

@@ -4,7 +4,7 @@
 
 ## Objectives
 
-1. Forecast the next trading day's price change of a configured security and offer the forecast through an API and an interactive app.
+1. Forecast the next trading day's price change of a configured security and offer the forecast through an API and a web app.
 2. Keep the forecast current without manual steps: new quotes arrive, the model is retrained, a better model replaces the current one, and the running system is monitored for data drift and service health.
 3. Compare every model honestly against simple baselines and state clearly that the service is not investment advice.
 
@@ -278,14 +278,14 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 **Statement**: Each command of the system works the same whatever folder it is started from.
 
-### One packaged environment
+### Packaged environments from one lock file
 
 **UID**: REQ-AUT-006 \
 **Status**: Draft \
 **Tags**: phase-2 \
 **VERIFICATION**: Inspection
 
-**Statement**: The system's commands, and its services built from its own code, run in one packaged environment with the pinned package versions.
+**Statement**: The system's commands, and its services built from its own code, run in packaged environments installed from the pinned package versions of the project's single lock file.
 
 ### Configured values checked at start
 
@@ -352,7 +352,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 
 **Statement**: An alert configured to start training starts the training pipeline.
 
-## App
+## Web app
 
 ### Forecast view
 
@@ -361,16 +361,16 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: The app lets a user choose a security and shows its recent price history, the model's forecast for the next trading day and the baseline forecasts.
+**Statement**: The web app lets a user choose a security and shows the closes of its latest 60 trading days, the model's forecast for the next trading day and the forecasts of the persistence and mean-change baselines, each as a change and the close it leads to; the mean-change forecast only if the training run recorded it. For a security without a production model, the web app shows the API's reason for giving no forecast. When the API fails on a request, the web app shows the API's reason instead.
 
 ### Not investment advice
 
 **UID**: REQ-APP-002 \
 **Status**: Draft \
 **Tags**: phase-3 \
-**VERIFICATION**: Test
+**VERIFICATION**: Inspection
 
-**Statement**: Every page of the app states that the forecasts are not investment advice.
+**Statement**: Every page of the web app states that the forecasts are not investment advice.
 
 ### Model results
 
@@ -379,7 +379,7 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: The app shows the key model metrics of the production model next to those of the baselines.
+**Statement**: The web app shows the MAE, skill against persistence and directional accuracy of the production model next to those of both baselines.
 
 ## Course constraints
 

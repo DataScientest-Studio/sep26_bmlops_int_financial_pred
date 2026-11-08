@@ -3,6 +3,7 @@
         load update replay replay-reset train predict \
         test acceptance contract \
         api api-stop \
+        webapp webapp-stop \
         mlflow mlflow-stop \
         airflow airflow-stop \
         monitoring monitoring-stop
@@ -106,6 +107,16 @@ api:
 # Stops the API.
 api-stop:
 	docker compose stop api
+
+# Starts the web app and the API it calls, rebuilt when the code changed; returns once
+# the app answers on localhost at the port WEBAPP_PORT from .env.
+webapp:
+	mkdir -p datasets
+	docker compose up --build --detach --wait webapp
+
+# Stops the web app; the API keeps running.
+webapp-stop:
+	docker compose stop webapp
 
 # Starts the MLflow server and its page with the database and the object store,
 # rebuilt when the code changed; returns once it answers on localhost at the port

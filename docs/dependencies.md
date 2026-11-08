@@ -35,6 +35,17 @@ themselves (numpy, pydantic, starlette …) are not listed.
 | pandas-stubs | Type information for pandas, published by the pandas project: tells the type checker what each pandas call accepts and returns. | Correct type checks of pandas code (pyright, Pylance). |
 | strictdoc | Requirements tool: checks `requirements.sdoc` and exports it. | `make requirements`. |
 
+## Web app (`webapp` group)
+
+The web app's image installs only this group, so it holds only these packages and what
+they pull in.
+
+| Package | What it does | Used for |
+|---|---|---|
+| streamlit | Python framework for data web apps: a script becomes a page with widgets, charts and tables; the script runs again on each interaction, and results can be cached between runs. | The web app (`webapp/app.py`, `make webapp`). |
+| httpx2 | HTTP client library, described under Runtime; listed here too because the web app's image installs only this group. | The web app's calls to the API. |
+| pandas | Tables in memory, described under Runtime; listed here too because `webapp/app.py` imports it and the image installs only this group. | The web app's tables and chart data. |
+
 ## In Airflow's image
 
 The pipelines in `airflow/dags/` run in Airflow's own image, which holds none of the

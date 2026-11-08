@@ -9,13 +9,13 @@ WORKDIR /app
 
 # Installs the packages before the code, so a code change reuses this layer.
 COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --locked --no-dev --no-install-project
+RUN uv sync --locked --no-default-groups --no-install-project
 
 # The package build reads README.md as the project's description (pyproject.toml).
 COPY README.md ./
 COPY src/ src/
 COPY db/init/ db/init/
-RUN uv sync --locked --no-dev
+RUN uv sync --locked --no-default-groups
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Passed in by `make` when it builds the image; defaults to "unknown" when built

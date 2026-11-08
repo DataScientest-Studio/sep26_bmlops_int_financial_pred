@@ -4,9 +4,9 @@ Forecasts the next trading day's price change of a security and offers the forec
 through an API. Automated pipelines keep it current: new quotes are loaded, a model is
 trained for each security, and a better model replaces the current one. A dashboard
 shows how the API is used and how up to date the prices are, and alerts fire when the
-API returns server errors, the prices fall behind or a daily update is missed. Still to
-come: an interactive app that shows the forecasts, and drift checks, which compare
-recent data with older data and start retraining when the data has changed.
+API returns server errors, the prices fall behind or a daily update is missed. A web app
+shows the forecasts. Still to come: drift checks, which compare recent data with older
+data and start retraining when the data has changed.
 
 **Not investment advice.** Short-term prices move close to randomly; every model is
 compared with simple baselines ("tomorrow's price equals today's", and the historical
@@ -23,7 +23,8 @@ runs both on a schedule (`make airflow`). The API reports numbers about its own 
 about how up to date the prices are; Grafana, a tool for dashboards and alerts, shows
 them (`make monitoring`). Training and the forecast work as commands (`make train`,
 `make predict`), and Airflow also runs training when new or replayed prices arrive. The
-interactive app and the drift checks are not built yet.
+web app shows a security's forecast and the model's results (`make webapp`). The drift
+checks are not built yet.
 
 ## Project structure
 ```
@@ -36,9 +37,9 @@ interactive app and the drift checks are not built yet.
 ├── .python-version              Python version
 ├── .gitignore                   files Git leaves out, among them .env, the Python environment, the datasets folder, price data (CSV) and caches
 ├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
-├── .dockerignore                what the project image is built from
-├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the data service, Airflow, Prometheus, Grafana, and the project commands on demand
-├── .env.example                 template for the local .env (database login, Airflow, MLflow and Grafana pages and logins, object-store login, MLflow address for programs run on this machine outside Docker, first day of history, replay start and interval, EODHD key)
+├── .dockerignore                what the project image and the web app image are built from
+├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the web app, the data service, Airflow, Prometheus, Grafana, and the project commands on demand
+├── .env.example                 template for the local .env (database login, Airflow, MLflow, web app and Grafana ports, Airflow and Grafana logins, object-store login, MLflow address for programs run on this machine outside Docker, first day of history, replay start and interval, EODHD key)
 ├── airflow/
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
@@ -92,6 +93,11 @@ interactive app and the drift checks are not built yet.
 │   ├── architecture.md          reference pipelines, components, tools
 │   └── evaluation.md            what is graded, defense format
 ├── datasets/                    copies of the training datasets with their version records, kept by DVC (gitignored)
+├── webapp/                      the web app
+│   ├── app.py                   the page: a security's closes, forecasts and model results, read through the API
+│   ├── Dockerfile               web app image: the webapp group's packages (Streamlit, the HTTP client, pandas), without the service's code (src/forecasting/)
+│   └── .streamlit/
+│       └── config.toml          Streamlit's settings inside the container
 ├── src/forecasting/             the service
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
@@ -176,6 +182,8 @@ output, errors included.
 | `make contract` | checks how EODHD delivers data, with your own key from `.env`; a check your key's history, remaining calls or plan cannot support is skipped with its reason |
 | `make api` | start the API on http://localhost:8000, documentation at `/docs`; returns once it answers |
 | `make api-stop` | stop the API |
+| `make webapp` | start the web app and the API it calls; its page is on `localhost` at the port `WEBAPP_PORT` from `.env` (see "Web app" below); returns once both answer |
+| `make webapp-stop` | stop the web app; the API keeps running |
 | `make mlflow` | start the MLflow server with the database and the object store; its page is on `localhost` at the port `MLFLOW_PORT` from `.env` (see "Model tracking" below); returns once it answers |
 | `make mlflow-stop` | stop the MLflow server and the object store; the database keeps running |
 | `make airflow` | start Airflow with the database, the data service and the API; its page is on `localhost` at the port `AIRFLOW_PORT` from `.env` (see "Scheduled pipelines" below); returns once it answers |
@@ -238,6 +246,38 @@ deletes the replay database with its forecasts, and these runs and models, model
 included, to start over. It also removes for good whatever was deleted on the MLflow
 page, and it returns training, forecasts and the API's price history and model results
 to the member's own database and models.
+
+### Web app
+The web app is the page for looking at the forecasts. `make webapp` starts it together
+with the API it calls and returns once both answer; its page is on `localhost` at the
+port `WEBAPP_PORT` from `.env`, and only this machine reaches it. `make webapp-stop`
+stops the web app and leaves the API running.
+
+The page opens with the notice that the forecasts are not investment advice. Choose one
+of the configured securities the API lists and the page shows:
+
+- a chart of the security's closes over its latest 60 trading days;
+- the forecast of the next trading day, with the day it is for, the close it starts from
+  and the model version. It gives the change and the close the model forecasts, next to
+  those of both baselines:
+  - persistence, which forecasts no change;
+  - the mean change of the model's training days, only if the training run recorded it;
+- the production model's scores on the evaluation days of its training run, next to the
+  baselines' scores: MAE (mean absolute error: the average size of a forecast's miss),
+  skill against persistence (how much smaller the model's MAE is than persistence's;
+  above 0 beats it) and directional accuracy (the share of days with the right direction
+  of change).
+
+The web app reads everything through the API and touches neither the database nor
+MLflow. For a security without a production model, the page shows the API's reason for
+giving no forecast. When the API fails on a request, the page shows the API's reason
+instead of the forecasts. While the replay database exists, the closes, the forecast and
+the model results are those of the replay (see [Replay](#replay)).
+
+The API stores every forecast it makes, so the web app asks for a security's forecast
+once per latest close and production model. It asks again after a new trading day, when
+a final close replaces a provisional one or when a new model is promoted. Clicking does
+not.
 
 ### Scheduled pipelines
 Airflow runs the pipelines on a schedule. `make airflow` starts it; its page is on
@@ -439,9 +479,9 @@ setting, edit its file:
   own machine, each explained in `.env.example`. Among them are the database login and
   port, which stay as in `.env.example` because the tests log in with them (see
   [Setup](#setup)); the MLflow address for programs run on this machine outside Docker
-  (`MLFLOW_TRACKING_URI`); the ports of the Airflow, MLflow and Grafana pages and the
-  logins of the Airflow and Grafana pages, plus the database logins of Airflow and
-  MLflow; the object store's login; the first day of history (`HISTORY_START`); the
+  (`MLFLOW_TRACKING_URI`); the ports of the Airflow, MLflow, web app and Grafana pages
+  and the logins of the Airflow and Grafana pages, plus the database logins of Airflow
+  and MLflow; the object store's login; the first day of history (`HISTORY_START`); the
   replay's start and interval (`REPLAY_START`, `REPLAY_INTERVAL_SECONDS`); and the EODHD
   key (`EODHD_API_KEY`).
 - `config/daily_update.toml`: when the daily update runs, how long a load may run and

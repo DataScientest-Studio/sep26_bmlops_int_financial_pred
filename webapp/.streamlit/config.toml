@@ -1,0 +1,18 @@
+# Streamlit sends no usage reports to its makers and, with a fixed address, does not ask
+# an outside service for the machine's public address, at start or for its own page.
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+
+# Listens on every address inside its container; the host publishes it on 127.0.0.1.
+# It opens no browser (headless). The code in the image never changes, so Streamlit
+# watches no files for changes.
+[server]
+headless = true
+address = "0.0.0.0"
+port = 8501
+fileWatcherType = "none"
+
+# A failure the page does not handle shows a short message; its details go to the log.
+[client]
+showErrorDetails = "none"

@@ -21,7 +21,7 @@ Pros:
 - Predictions vs. actual outcomes is a join on security and day, done by the database.
 - Date-range queries and "latest day per security" are short, standard SQL.
 - MLflow (runs, model registry) and Airflow (its own bookkeeping) both need an SQL database anyway. One PostgreSQL server can hold all three as separate databases — one engine to run, back up and learn.
-- Built for many clients at once: API, ingestion, Airflow, MLflow and the app all connect to the same server and write at the same time.
+- Built for many clients at once: API, ingestion, Airflow and MLflow all connect to the same server and write at the same time.
 - Strict data types (`date`, `numeric`, `timestamp`): bad data is rejected on insert instead of being stored silently.
 - pandas reads query results directly into a DataFrame (`read_sql`), which is what training and Evidently consume.
 - Ad-hoc questions about the product later ("which securities had the largest errors last month?") need no new code.
