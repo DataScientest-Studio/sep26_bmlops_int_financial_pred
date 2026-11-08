@@ -3,7 +3,8 @@ x-project: &project
   build:
     context: .
     args:
-      CODE_VERSION: ${CODE_VERSION:-unknown}
+      CODE_COMMIT: ${CODE_COMMIT:-unknown}
+      CODE_HAS_UNCOMMITTED_CHANGES: ${CODE_HAS_UNCOMMITTED_CHANGES:-}
   image: financial-prediction:local
   env_file: .env
   # Inside Compose the database and the MLflow server are reached by their service
@@ -213,7 +214,8 @@ services:
     build:
       context: .
       args:
-        CODE_VERSION: ${CODE_VERSION:-unknown}
+        CODE_COMMIT: ${CODE_COMMIT:-unknown}
+        CODE_HAS_UNCOMMITTED_CHANGES: ${CODE_HAS_UNCOMMITTED_CHANGES:-}
     # The image's entrypoint run-as-owner looks up the owner of /app/datasets; MLflow
     # mounts no project folder and writes no host files, so it starts directly.
     entrypoint: []

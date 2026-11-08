@@ -374,7 +374,8 @@ it works. Depends on: in brackets.
     `127.0.0.1:${MLFLOW_PORT}`; the API and the commands reach it inside Compose
   - [x] the project image carries the commit it was built from: `make` passes it in when
     it builds the image, a build from a tree with uncommitted changes says so, and a
-    build `make` did not start records the code version as `unknown`
+    build `make` did not start records the commit as `unknown` and leaves out whether
+    tracked files had uncommitted changes
   - [x] every training run records its parameters, metrics, dataset version, code
     version, model and whether it was promoted (1)
   - [x] MLflow is the model store; the `models/` folder is removed (1)
@@ -466,8 +467,9 @@ Interfaces to agree first, so items 2–7 can be built in parallel:
   (`weekdays`), time zone (`timezone`), the time the final delay counts from
   (`start_after`) and load limit (`load_limit_minutes`), and the final delay
   (`final_delay_minutes`), are set in `config/daily_update.toml`.
-- Code version: the commit the project image was built from; `unknown` when `make` did
-  not build it.
+- Code version: the commit the project image was built from, and whether tracked files
+  had uncommitted changes; when `make` did not build it, the commit is `unknown` and
+  the uncommitted-changes flag is left out.
 
 ## Phase 3 plan — the loop closes and is monitored
 The milestone "Closed loop and monitoring" of the roadmap (Oct 30–Nov 6).

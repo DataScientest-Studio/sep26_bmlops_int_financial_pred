@@ -97,7 +97,9 @@ class Settings:
         dataset_dir: Folder where DVC keeps the copies of the training datasets.
         dataset_remote: DVC remote where `dataset_version` pushes each copy.
         mlflow_tracking_uri: Address of the MLflow tracking server and model registry.
-        code_version: Git commit the image was built from, or "unknown".
+        code_commit: Git commit the image was built from, or "unknown".
+        code_has_uncommitted_changes: Whether tracked files had uncommitted changes when
+            the image was built; None when unknown.
         securities: The securities the system loads, trains and forecasts.
         indices: Market indices loaded as reference series, never forecasts.
         final_delay: Time after an exchange's close from which a fetched price is final,
@@ -117,7 +119,8 @@ class Settings:
     dataset_dir: Path
     dataset_remote: str
     mlflow_tracking_uri: str
-    code_version: str
+    code_commit: str
+    code_has_uncommitted_changes: bool | None
     securities: tuple[Security, ...]
     indices: tuple[Security, ...]
     final_delay: timedelta
@@ -163,12 +166,34 @@ def _minutes(
     return timedelta(minutes=value)
 
 
+def _uncommitted_changes(value: str) -> bool | None:
+    """Return whether tracked files had uncommitted changes, from the variable's text.
+
+    Args:
+        value: The text of CODE_HAS_UNCOMMITTED_CHANGES, empty when unset.
+
+    Returns:
+        True for "true", False for "false", None for empty text.
+
+    Raises:
+        ValueError: If the text is anything else.
+    """
+    if value not in ("true", "false", ""):
+        raise ValueError(
+            f'CODE_HAS_UNCOMMITTED_CHANGES must be "true", "false" or empty, '
+            f"got {value!r}"
+        )
+
+    return {"true": True, "false": False}.get(value)
+
+
 def load_settings() -> Settings:
     """Read the settings from the environment and the files in config/.
 
     Environment: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_HOST, POSTGRES_PORT,
     POSTGRES_DB, HISTORY_START, REPLAY_START and MLFLOW_TRACKING_URI (a missing
-    variable raises KeyError); CODE_VERSION (defaults to "unknown").
+    variable raises KeyError); CODE_COMMIT (defaults to "unknown");
+    CODE_HAS_UNCOMMITTED_CHANGES ("true" or "false"; unset or empty means unknown).
 
     @relation(REQ-DAT-001, scope=function)
     @relation(REQ-DAT-003, scope=function)
@@ -188,7 +213,8 @@ def load_settings() -> Settings:
             if start_after plus the final delay reaches the next day; if weekdays of the
             daily update are invalid; if evaluation_days is not an integer of at least
             FEWEST_EVALUATION_DAYS; if a symbol or exchange of the securities file is
-            not a non-empty text.
+            not a non-empty text; if CODE_HAS_UNCOMMITTED_CHANGES is neither "true",
+            "false" nor empty.
     """
     env = os.environ
     # URL.create escapes characters with a meaning in URLs, such as @ in a password.
@@ -247,7 +273,10 @@ def load_settings() -> Settings:
         dataset_dir=DATASET_DIR,
         dataset_remote=DATASET_REMOTE,
         mlflow_tracking_uri=env["MLFLOW_TRACKING_URI"],
-        code_version=env.get("CODE_VERSION", "unknown"),
+        code_commit=env.get("CODE_COMMIT", "unknown"),
+        code_has_uncommitted_changes=_uncommitted_changes(
+            env.get("CODE_HAS_UNCOMMITTED_CHANGES", "")
+        ),
         securities=securities,
         indices=indices,
         final_delay=final_delay,

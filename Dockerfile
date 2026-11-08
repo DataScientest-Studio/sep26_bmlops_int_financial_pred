@@ -18,10 +18,18 @@ COPY db/init/ db/init/
 RUN uv sync --locked --no-default-groups
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Passed in by `make` when it builds the image; defaults to "unknown" when built
-# directly without `make`.
-ARG CODE_VERSION=unknown
-ENV CODE_VERSION=${CODE_VERSION}
+# Passed in by `make` when it builds the image: the commit and whether tracked files had
+# uncommitted changes ("true" or "false"). An image not built by `make` records the
+# commit as "unknown" and leaves unknown whether tracked files had uncommitted changes.
+ARG CODE_COMMIT=unknown
+ENV CODE_COMMIT=${CODE_COMMIT}
+ARG CODE_HAS_UNCOMMITTED_CHANGES=
+ENV CODE_HAS_UNCOMMITTED_CHANGES=${CODE_HAS_UNCOMMITTED_CHANGES}
+
+# The image carries neither Git nor the repository's .git folder;
+# GIT_PYTHON_REFRESH=quiet keeps MLflow's Git lookup from warning when it finds
+# neither. The code version comes from CODE_COMMIT and CODE_HAS_UNCOMMITTED_CHANGES.
+ENV GIT_PYTHON_REFRESH=quiet
 
 COPY tools/run-as-owner.sh /usr/local/bin/run-as-owner
 ENTRYPOINT ["run-as-owner"]

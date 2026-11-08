@@ -9,6 +9,7 @@ import pandas as pd
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
 from mlflow.sklearn import load_model, log_model
+from mlflow.utils.mlflow_tags import MLFLOW_GIT_COMMIT, MLFLOW_GIT_DIRTY
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
@@ -164,7 +165,14 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     promoted = _is_better_than_production(
         model_name, evaluation_features, evaluation_target, evaluation.model.mae
     )
-    with mlflow.start_run():
+    # MLflow's standard tags mlflow.source.git.commit and mlflow.source.git.dirty hold a
+    # run's code version. Tags given to start_run win over MLflow's own Git lookup, so
+    # they always hold the deployment's code version; mlflow.source.git.dirty is left
+    # out when it is unknown whether tracked files had uncommitted changes.
+    code_tags = {MLFLOW_GIT_COMMIT: settings.code_commit}
+    if settings.code_has_uncommitted_changes is not None:
+        code_tags[MLFLOW_GIT_DIRTY] = str(settings.code_has_uncommitted_changes).lower()
+    with mlflow.start_run(tags=code_tags):
         mlflow.log_params(
             {
                 "symbol": symbol,
@@ -172,7 +180,6 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
                 "evaluation_days": settings.evaluation_days,
                 "training_samples": training_samples,
                 "dataset_version": version,
-                "code_version": settings.code_version,
             }
         )
         mlflow.log_metrics(

@@ -1,10 +1,12 @@
 """Acceptance tests of the model requirements (black box)."""
 
+from dataclasses import replace
 from datetime import date, timedelta
 
 import pandas as pd
 import pytest
 from mlflow.sklearn import load_model
+from mlflow.utils.mlflow_tags import MLFLOW_GIT_COMMIT, MLFLOW_GIT_DIRTY
 
 from forecasting.datasets import dataset_version
 from forecasting.db import read_prices, read_splits
@@ -105,10 +107,13 @@ def test_training_records_parameters_metrics_versions_and_model(engine, settings
         read_prices(engine, symbol), read_splits(engine, symbol)
     )
     expected_dataset_version = dataset_version(settings, symbol, trained_rows)
-    result = train(engine, settings, symbol)
-    run = run_of(settings, symbol, result.model_version)
+    commit = "0123456789abcdef0123456789abcdef01234567"
+    versioned = replace(settings, code_commit=commit, code_has_uncommitted_changes=True)
+    result = train(engine, versioned, symbol)
+    run = run_of(versioned, symbol, result.model_version)
     assert run.data.params["dataset_version"] == expected_dataset_version
-    assert run.data.params["code_version"] == settings.code_version
+    assert run.data.tags[MLFLOW_GIT_COMMIT] == commit
+    assert run.data.tags[MLFLOW_GIT_DIRTY] == "true"
     assert run.data.params["evaluation_days"] == str(settings.evaluation_days)
     assert run.data.metrics["model_mae"] == pytest.approx(result.evaluation.model.mae)
     assert run.data.metrics["persistence_mae"] == pytest.approx(

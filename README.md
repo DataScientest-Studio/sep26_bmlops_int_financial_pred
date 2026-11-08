@@ -370,6 +370,22 @@ not updated later: a run whose model has since been replaced still shows `true`.
 the replay database exists, training and `make predict` use `replay-forecast-<symbol>`
 instead (see [Replay](#replay)).
 
+Each run also records its code version, in MLflow's standard tags
+`mlflow.source.git.commit` (the commit) and `mlflow.source.git.dirty` (`true` when
+tracked files had uncommitted changes, `false` when not). `make` captures both when it
+builds the project image (see [Setup](#setup)), which every `make` command that runs
+the image does first, so a run's tags describe the files as they were when `make` last
+built the image that ran the training. An image not built with `make` records the
+commit as `unknown` and has no `mlflow.source.git.dirty` tag.
+
+MLflow's page for a run shows the commit next to the run's source, its first seven
+characters; opening it shows the whole commit. The optional column "Version" in the
+experiment's run list (switch it on in the column picker) shows the first six
+characters of the commit, not the model version above. MLflow's pages do not show
+`mlflow.source.git.dirty`. To find the runs trained on code with uncommitted changes,
+enter `tags."mlflow.source.git.dirty" = "true"` in the search box above the run list;
+runs without the tag are not listed.
+
 ### Object store
 [SeaweedFS](https://github.com/seaweedfs/seaweedfs) runs in Docker (`object-store`) as
 an S3-compatible object store for files that do not belong in PostgreSQL: MLflow's model
