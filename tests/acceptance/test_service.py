@@ -96,7 +96,7 @@ def test_training_endpoint_trains_and_reports_outcome(client, engine, settings):
     assert response.status_code == 200
     body = response.json()
     assert body["symbol"] == SECURITIES[0].symbol
-    assert body["model_version"]
+    assert body["model_version"] == "1"
     assert body["promoted"] is True
     assert body["evaluation_days"] > 0
 

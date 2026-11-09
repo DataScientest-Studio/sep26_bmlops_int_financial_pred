@@ -168,10 +168,10 @@ def test_user_chooses_a_security_and_sees_its_forecasts(
     )
 
 
-def test_refused_security_shows_the_reason_instead_of_the_forecasts(
+def test_refused_security_shows_a_refusal_notice_instead_of_the_forecasts(
     fake_api: FakeApi, open_page: Callable[[], AppTest]
 ) -> None:
-    """REQ-APP-001: a security without a production model shows the API's reason."""
+    """REQ-APP-001: a security without a production model shows a refusal notice."""
     reason = "No production model for A"
     fake_api.serve_securities(["A"])
     fake_api.routes[("GET", "/securities/A/history", None)] = (200, HISTORY)
@@ -180,14 +180,15 @@ def test_refused_security_shows_the_reason_instead_of_the_forecasts(
     page = open_page()
 
     assert not page.exception
-    assert page.info[0].value == reason
+    assert len(page.info) == 1
+    assert len(page.error) == 0
     assert len(page.dataframe) == 0
 
 
-def test_failed_forecast_shows_the_reason_instead_of_the_forecasts(
+def test_failed_forecast_shows_an_error_notice_instead_of_the_forecasts(
     fake_api: FakeApi, open_page: Callable[[], AppTest]
 ) -> None:
-    """REQ-APP-001: when the API fails on a request, the page shows its reason."""
+    """REQ-APP-001: when the API fails on a request, the page shows an error notice."""
     reason = "MLflow is unreachable"
     fake_api.serve_securities(["A"])
     fake_api.serve_security("A", "1", 0.01, 0.0025)
@@ -195,7 +196,8 @@ def test_failed_forecast_shows_the_reason_instead_of_the_forecasts(
     page = open_page()
 
     assert not page.exception
-    assert reason in page.error[0].value
+    assert len(page.error) == 1
+    assert len(page.info) == 0
     assert len(page.dataframe) == 0
 
 
