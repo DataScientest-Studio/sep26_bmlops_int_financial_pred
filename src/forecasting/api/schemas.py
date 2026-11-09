@@ -5,6 +5,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from forecasting.train import TrainingDecisionReason
+
 
 class SecurityRequest(BaseModel):
     """Names the security a request is about.
@@ -13,6 +15,24 @@ class SecurityRequest(BaseModel):
     """
 
     symbol: Annotated[str, Field(min_length=1, max_length=20, examples=["AAPL.US"])]
+
+
+class TrainingRequest(SecurityRequest):
+    """Names the security to train and whether to train it only when needed.
+
+    @relation(REQ-SVC-002, REQ-MOD-006, scope=class)
+    """
+
+    only_when_needed: Annotated[
+        bool,
+        Field(
+            description=(
+                "Train only when the security has no recorded training, when drift is"
+                " found in its daily changes, or when its retraining interval is"
+                " reached."
+            )
+        ),
+    ] = False
 
 
 class ForecastResponse(BaseModel):
@@ -36,18 +56,32 @@ class ForecastResponse(BaseModel):
 
 
 class TrainingResponse(BaseModel):
-    """Outcome of a training run.
+    """Outcome of a training request; the model fields are null when nothing trained.
 
-    @relation(REQ-SVC-002, scope=class)
+    @relation(REQ-SVC-002, REQ-MOD-006, scope=class)
     """
 
     symbol: str
-    model_version: str
-    promoted: bool
-    evaluation_days: int
-    model_mae: float
-    persistence_mae: float
-    mean_change_mae: float
+    trained: bool
+    training_decision_reason: Annotated[
+        TrainingDecisionReason,
+        Field(description="Why the security was trained or not."),
+    ]
+    feature_drift_p_value: Annotated[
+        float | None,
+        Field(
+            description=(
+                "P-value of the feature drift check; null when the security has no"
+                " recorded training."
+            )
+        ),
+    ]
+    model_version: str | None = None
+    promoted: bool | None = None
+    evaluation_days: int | None = None
+    model_mae: float | None = None
+    persistence_mae: float | None = None
+    mean_change_mae: float | None = None
 
 
 class CloseResponse(BaseModel):

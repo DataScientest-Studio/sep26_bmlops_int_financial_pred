@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import date
+from enum import StrEnum
 from typing import Any
 
 import mlflow
@@ -18,6 +19,7 @@ from sqlalchemy import Engine
 from forecasting.config import Settings
 from forecasting.datasets import dataset_version
 from forecasting.db import read_prices, read_splits
+from forecasting.drift_checks import check_feature_drift
 from forecasting.evaluate import Evaluation, evaluate
 from forecasting.features import (
     CHANGE_DAYS,
@@ -37,6 +39,19 @@ MISSING_MODEL_ERRORS = ("RESOURCE_DOES_NOT_EXIST", "INVALID_PARAMETER_VALUE")
 EXPERIMENT_NAME = "forecasting"
 REPLAY_EXPERIMENT_NAME = f"{REPLAY_PREFIX}{EXPERIMENT_NAME}"
 PRODUCTION_ALIAS = "production"
+# Name of the run parameter in which a training records the last day of the prices it
+# used, as its last step: only a completed run records it.
+PRICES_UNTIL = "prices_until"
+
+
+class TrainingDecisionReason(StrEnum):
+    """Why a training request trains a security, or why not."""
+
+    TRAINING_REQUESTED = "training requested"
+    NO_RECORDED_TRAINING = "no recorded training"
+    FEATURE_DRIFT_FOUND = "feature drift found"
+    RETRAINING_INTERVAL_REACHED = "retraining interval reached"
+    NOT_NEEDED = "not needed"
 
 
 @dataclass(frozen=True)
@@ -61,6 +76,36 @@ class TrainingResult:
     evaluation: Evaluation
 
 
+@dataclass(frozen=True)
+class TrainingDecision:
+    """Whether a training request trains a security, and why.
+
+    Attributes:
+        training_decision_reason: Why the security is trained or not.
+        feature_drift_p_value: P-value of the feature drift check; None when the
+            security has no recorded training to compare with.
+        drift_check_run_id: Id of the drift check's run in MLflow; None when no check
+            ran.
+    """
+
+    training_decision_reason: TrainingDecisionReason
+    feature_drift_p_value: float | None
+    drift_check_run_id: str | None
+
+    @property
+    def trains(self) -> bool:
+        """Tell whether the security is trained."""
+        return self.training_decision_reason != TrainingDecisionReason.NOT_NEEDED
+
+
+def training_experiment_name(replaying: bool) -> str:
+    """Return the name of the MLflow experiment training runs are recorded in.
+
+    @relation(REQ-DAT-003, scope=function)
+    """
+    return REPLAY_EXPERIMENT_NAME if replaying else EXPERIMENT_NAME
+
+
 def registered_model_name(symbol: str, replaying: bool) -> str:
     """Return the name a security's models are registered under in MLflow.
 
@@ -71,7 +116,70 @@ def registered_model_name(symbol: str, replaying: bool) -> str:
     return f"{prefix}forecast-{symbol}"
 
 
-def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
+def decide_training(
+    engine: Engine, settings: Settings, symbol: str, only_when_needed: bool
+) -> TrainingDecision:
+    """Decide whether a training request trains a security, and say why.
+
+    A security with a recorded training first gets a feature drift check, recorded in
+    MLflow. A request marked only when needed trains the security only when it has no
+    recorded training, when the check finds drift, or when at least
+    `retraining_interval_days` stored trading days lie after its latest training; any
+    other request always trains.
+
+    @relation(REQ-MOD-006, scope=function)
+    @relation(REQ-MON-001, scope=function)
+
+    Args:
+        engine: Engine of the project database; while the replay database exists,
+            the decision reads that instead.
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+        only_when_needed: Whether the request trains only when needed.
+
+    Returns:
+        Whether the security is trained, why, and the drift check's p-value and run.
+    """
+    prices, replaying = read_final_prices(engine, settings, symbol)
+    prices_until = find_latest_training(settings, symbol, replaying)
+    if prices_until is None:
+        reason = (
+            TrainingDecisionReason.NO_RECORDED_TRAINING
+            if only_when_needed
+            else TrainingDecisionReason.TRAINING_REQUESTED
+        )
+
+        return TrainingDecision(
+            training_decision_reason=reason,
+            feature_drift_p_value=None,
+            drift_check_run_id=None,
+        )
+    drift = check_feature_drift(settings, symbol, prices, prices_until, replaying)
+    # Comparing the day column with one day gives one True or False per row; sum counts
+    # the True rows: the stored final trading days after the latest training's prices.
+    days_after_training = int((prices["day"] > prices_until).sum())
+    if not only_when_needed:
+        reason = TrainingDecisionReason.TRAINING_REQUESTED
+    elif drift.drift_found:
+        reason = TrainingDecisionReason.FEATURE_DRIFT_FOUND
+    elif days_after_training >= settings.retraining_interval_days:
+        reason = TrainingDecisionReason.RETRAINING_INTERVAL_REACHED
+    else:
+        reason = TrainingDecisionReason.NOT_NEEDED
+
+    return TrainingDecision(
+        training_decision_reason=reason,
+        feature_drift_p_value=drift.p_value,
+        drift_check_run_id=drift.run_id,
+    )
+
+
+def train(
+    engine: Engine,
+    settings: Settings,
+    symbol: str,
+    drift_check_run_id: str | None = None,
+) -> TrainingResult:
     """Train a model on the stored prices of one security and record the run in MLflow.
 
     The latest days are held back for evaluation; the model is fitted on all earlier
@@ -86,6 +194,8 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     @relation(REQ-MOD-003, scope=function)
     @relation(REQ-MOD-004, scope=function)
     @relation(REQ-MOD-005, scope=function)
+    @relation(REQ-MOD-006, scope=function)
+    @relation(REQ-MON-001, scope=function)
     @relation(REQ-SVC-002, scope=function)
 
     Args:
@@ -93,28 +203,14 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
             training reads that instead.
         settings: Settings of this deployment.
         symbol: Ticker of the security.
+        drift_check_run_id: Id of the drift check run before this training, recorded
+            with the run; None when no check ran.
 
     Returns:
         The model version, whether it was promoted, the periods used and the
         evaluation.
     """
-    # Callers pass a configured security: the route refuses any other symbol, the
-    # commands loop over the configured ones. is_final needs its exchange to know when
-    # that exchange closes.
-    exchange = settings.exchange_of(symbol)
-    with history_database(engine, settings) as (database, replaying):
-        stored = read_prices(database, symbol)
-        splits = read_splits(database, symbol)
-    # One True or False per row: is that day's close final? zip walks both columns side
-    # by side. stored.loc[final] keeps the True rows, so a provisional close, which may
-    # still change, never enters training.
-    final = [
-        is_final(exchange, day, fetched_at, settings.final_delay)
-        for day, fetched_at in zip(stored["day"], stored["fetched_at"])
-    ]
-    # correct_for_splits expresses the final days in the shares of the latest final
-    # day; a split after that day has not happened for these rows yet.
-    prices = correct_for_splits(stored.loc[final], splits)
+    prices, replaying = read_final_prices(engine, settings, symbol)
     features = build_features(prices)
     target = build_target(prices)
     # A row is usable when every feature and the target are present: the first rows
@@ -156,9 +252,10 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     )
     evaluation = evaluate(evaluation_target, predicted, training_target)
     model_name = registered_model_name(symbol, replaying)
-    experiment_name = REPLAY_EXPERIMENT_NAME if replaying else EXPERIMENT_NAME
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
-    mlflow.set_experiment(experiment_name)
+    # The experiment is named in start_run, not only set: MLflow keeps the active
+    # experiment for the whole process, and the API trains in several threads.
+    experiment = mlflow.set_experiment(training_experiment_name(replaying))
     # The new model replaces production only if its error on the latest evaluation
     # days is lower than the production model's error on the same days. Only the
     # current production model competes, not every earlier version.
@@ -172,7 +269,7 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
     code_tags = {MLFLOW_GIT_COMMIT: settings.code_commit}
     if settings.code_has_uncommitted_changes is not None:
         code_tags[MLFLOW_GIT_DIRTY] = str(settings.code_has_uncommitted_changes).lower()
-    with mlflow.start_run(tags=code_tags):
+    with mlflow.start_run(experiment_id=experiment.experiment_id, tags=code_tags):
         mlflow.log_params(
             {
                 "symbol": symbol,
@@ -182,6 +279,8 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
                 "dataset_version": version,
             }
         )
+        if drift_check_run_id is not None:
+            mlflow.set_tag("drift_check_run_id", drift_check_run_id)
         mlflow.log_metrics(
             {
                 "model_mae": evaluation.model.mae,
@@ -210,6 +309,11 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         # Set after the alias, so a run whose promotion failed never says "true"; a
         # failure inside the run marks the run itself as failed in MLflow.
         mlflow.set_tag("promoted", str(promoted).lower())
+        # Logged last, so only a completed run records it: a security's latest training
+        # is its latest completed run. Its drift check compares against the daily
+        # changes up to this day, and the retraining interval counts the stored trading
+        # days after it.
+        mlflow.log_param(PRICES_UNTIL, prices["day"].iloc[-1])
 
     # training_samples - 1 is the last training row, training_samples the first
     # evaluation row.
@@ -221,6 +325,85 @@ def train(engine: Engine, settings: Settings, symbol: str) -> TrainingResult:
         evaluation_start=days.iloc[training_samples],
         evaluation=evaluation,
     )
+
+
+def read_final_prices(
+    engine: Engine, settings: Settings, symbol: str
+) -> tuple[pd.DataFrame, bool]:
+    """Read a security's prices with a final close, corrected for splits.
+
+    @relation(REQ-MOD-001, scope=function)
+
+    Args:
+        engine: Engine of the project database; while the replay database exists,
+            the prices are read from that instead.
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+
+    Returns:
+        The prices, oldest first, and whether they come from the replay database.
+    """
+    # Callers pass a configured security: the route refuses any other symbol, the
+    # commands loop over the configured ones. is_final needs its exchange to know when
+    # that exchange closes.
+    exchange = settings.exchange_of(symbol)
+    with history_database(engine, settings) as (database, replaying):
+        stored = read_prices(database, symbol)
+        splits = read_splits(database, symbol)
+    # One True or False per row: is that day's close final? zip walks both columns side
+    # by side. stored.loc[final] keeps the True rows, so a provisional close, which may
+    # still change, never enters training or a drift check.
+    final = [
+        is_final(exchange, day, fetched_at, settings.final_delay)
+        for day, fetched_at in zip(stored["day"], stored["fetched_at"])
+    ]
+    # correct_for_splits expresses the final days in the shares of the latest final
+    # day; a split after that day has not happened for these rows yet.
+    prices = correct_for_splits(stored.loc[final], splits)
+
+    return prices, replaying
+
+
+def find_latest_training(
+    settings: Settings, symbol: str, replaying: bool
+) -> date | None:
+    """Return the last day of the prices a security's latest completed training used.
+
+    A completed run is finished and has recorded `PRICES_UNTIL`, its last step;
+    promoted or not.
+
+    @relation(REQ-MOD-006, scope=function)
+
+    Args:
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+        replaying: Whether the replay database exists; replay runs are recorded in
+            their own experiment.
+
+    Returns:
+        The last day of the prices the latest completed training run used, or None when
+        the security has no such run.
+    """
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    experiment = client.get_experiment_by_name(training_experiment_name(replaying))
+    # No experiment yet: nothing was ever trained.
+    if experiment is None:
+        return None
+    # A failed run is marked FAILED; a run cut off before its last step lacks the
+    # parameter, and a parameter compared with != '' leaves out every run without it.
+    runs = client.search_runs(
+        [experiment.experiment_id],
+        filter_string=(
+            f"params.symbol = '{symbol}' and attributes.status = 'FINISHED'"
+            f" and params.{PRICES_UNTIL} != ''"
+        ),
+        order_by=["attributes.start_time DESC"],
+        max_results=1,
+    )
+    if not runs:
+        return None
+
+    return date.fromisoformat(runs[0].data.params[PRICES_UNTIL])
 
 
 def _is_better_than_production(

@@ -6,12 +6,14 @@ from `.env.example`. Each pytest-xdist worker gets its own database, created fro
 `db/init/`, so workers never share data.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import psycopg
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from mlflow import MlflowClient
 from sqlalchemy import Engine, make_url, text
@@ -20,6 +22,10 @@ from forecasting.api.app import create_app
 from forecasting.api.dependencies import get_engine, get_settings
 from forecasting.config import Settings, load_settings
 from forecasting.db import connect, create_database, drop_database
+from forecasting.drift_checks import (
+    DRIFT_CHECKS_EXPERIMENT_NAME,
+    REPLAY_DRIFT_CHECKS_EXPERIMENT_NAME,
+)
 from forecasting.train import EXPERIMENT_NAME, REPLAY_EXPERIMENT_NAME
 from tests.fakes import INDICES, SECURITIES
 
@@ -78,7 +84,7 @@ def settings(
     """Test settings on this worker's databases, test symbols, own folders and MLflow.
 
     MLflow keeps its records in a file under the test's folder; the experiments are
-    created upfront so their model files land there too.
+    created upfront so their model files and drift reports land there too.
     """
     dataset_dir = tmp_path / "datasets"
     dataset_dir.mkdir()
@@ -87,6 +93,10 @@ def settings(
     client = MlflowClient(tracking_uri=mlflow_tracking_uri)
     client.create_experiment(EXPERIMENT_NAME, artifact_location=artifacts)
     client.create_experiment(REPLAY_EXPERIMENT_NAME, artifact_location=artifacts)
+    client.create_experiment(DRIFT_CHECKS_EXPERIMENT_NAME, artifact_location=artifacts)
+    client.create_experiment(
+        REPLAY_DRIFT_CHECKS_EXPERIMENT_NAME, artifact_location=artifacts
+    )
 
     return replace(
         example_settings,
@@ -101,10 +111,29 @@ def settings(
 
 
 @pytest.fixture
-def client(engine: Engine, settings: Settings) -> Iterator[TestClient]:
-    """API client whose endpoints use the test database and settings."""
+def app(engine: Engine, settings: Settings) -> FastAPI:
+    """API whose endpoints use the test database and settings."""
     app = create_app()
     app.dependency_overrides[get_engine] = lambda: engine
     app.dependency_overrides[get_settings] = lambda: settings
+
+    return app
+
+
+@pytest.fixture
+def client(app: FastAPI) -> Iterator[TestClient]:
+    """Client of the `app` fixture's API."""
     with TestClient(app) as client:
         yield client
+
+
+@pytest.fixture
+def change_settings(app: FastAPI, settings: Settings) -> Callable[..., None]:
+    """Give a test a function that changes settings the `app` fixture's API uses."""
+
+    def change(**changes: Any) -> None:
+        """Make the API use the test settings with `changes`."""
+        changed = replace(settings, **changes)
+        app.dependency_overrides[get_settings] = lambda: changed
+
+    return change

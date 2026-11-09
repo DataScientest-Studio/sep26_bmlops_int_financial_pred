@@ -1,5 +1,6 @@
 """Stand-ins for outside systems, so tests need no network."""
 
+from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 
 import numpy as np
@@ -8,7 +9,7 @@ import pandas as pd
 from forecasting.config import Security
 from forecasting.db import DIVIDEND_COLUMNS, SPLIT_COLUMNS
 from forecasting.load import Delivery
-from forecasting.trading_calendar import trading_days
+from forecasting.trading_calendar import next_trading_day, trading_days
 
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
 INDICES = (Security("TEST.INDX", "XNYS"),)
@@ -41,6 +42,67 @@ def price_history(exchange: str, start: str, end: str, seed: int) -> pd.DataFram
             "volume": rng.integers(1_000, 10_000, len(days)),
         }
     )
+
+
+def _prices_on(days: list[date], changes: Sequence[float]) -> pd.DataFrame:
+    """Build prices from 100 whose close-to-close changes cycle through `changes`."""
+    steps = [1.0] + [1 + changes[i % len(changes)] for i in range(len(days) - 1)]
+    close = 100 * np.cumprod(steps)
+
+    return pd.DataFrame(
+        {
+            "day": days,
+            "open": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "volume": 1_000,
+        }
+    )
+
+
+def history_from_changes(
+    exchange: str, start: str, end: str, changes: Sequence[float]
+) -> pd.DataFrame:
+    """Build a price history whose daily changes are exactly the given ones.
+
+    Args:
+        exchange: MIC of the exchange.
+        start: First calendar date, ISO format.
+        end: Last calendar date, ISO format.
+        changes: Relative close-to-close changes, each above -1; the changes from one
+            day to the next cycle through them, starting with the first.
+
+    Returns:
+        One row per trading day with the price columns of the database; the first
+        close is 100.
+    """
+    days = trading_days(exchange, date.fromisoformat(start), date.fromisoformat(end))
+
+    return _prices_on(days, changes)
+
+
+def history_after(
+    exchange: str, last_day: date, count: int, changes: Sequence[float]
+) -> pd.DataFrame:
+    """Build the prices of the trading days after a day, like `history_from_changes`.
+
+    Args:
+        exchange: MIC of the exchange.
+        last_day: The day before the first day built; need not be a trading day.
+        count: Number of trading days to build.
+        changes: Relative close-to-close changes, as for `history_from_changes`.
+
+    Returns:
+        `count` rows; the first close is 100, whatever the closes before were.
+    """
+    first = next_trading_day(exchange, last_day)
+    # Two calendar days for each trading day, plus a margin for holidays, always hold
+    # `count` trading days.
+    ahead = first + timedelta(days=2 * count + 10)
+    days = trading_days(exchange, first, ahead)[:count]
+
+    return _prices_on(days, changes)
 
 
 class FakeSource:

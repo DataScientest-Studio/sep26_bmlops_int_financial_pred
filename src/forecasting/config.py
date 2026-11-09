@@ -19,6 +19,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[2]
 SECURITIES_FILE = PROJECT_DIR / "config" / "securities.toml"
 DAILY_UPDATE_FILE = PROJECT_DIR / "config" / "daily_update.toml"
 TRAINING_FILE = PROJECT_DIR / "config" / "training.toml"
+DRIFT_CHECKS_FILE = PROJECT_DIR / "config" / "drift_checks.toml"
 DATASET_DIR = PROJECT_DIR / "datasets"
 DATASET_REMOTE = "s3://datasets"
 # Range of the final delay: below 25 minutes a price from before the close can count as
@@ -33,6 +34,22 @@ LONGEST_LOAD_LIMIT = timedelta(minutes=60)
 # Fewest evaluation days: a model needs at least one day to be scored on. The most
 # depends on each security's stored history; training checks it.
 FEWEST_EVALUATION_DAYS = 1
+# Range of the retraining interval in trading days: 1 retrains a security on every new
+# trading day; above 250, about one trading year, a model stays in use too long.
+SHORTEST_RETRAINING_INTERVAL = 1
+LONGEST_RETRAINING_INTERVAL = 250
+# Range of the drift window in trading days: below 20 the test has too few values to
+# find drift; above 250, about one trading year, a drift shows too late.
+SHORTEST_DRIFT_WINDOW = 20
+LONGEST_DRIFT_WINDOW = 250
+# Range of the prediction drift check interval in trading days: 1 checks on every new
+# trading day; above 60 a drift shows too late.
+SHORTEST_PREDICTION_DRIFT_CHECK_INTERVAL = 1
+LONGEST_PREDICTION_DRIFT_CHECK_INTERVAL = 60
+# Range of the p-value threshold at or below which a check finds drift: below 0.001 the
+# test hardly ever finds drift; above 0.1 it often finds drift where there is none.
+LOWEST_DRIFT_P_VALUE_THRESHOLD = 0.001
+HIGHEST_DRIFT_P_VALUE_THRESHOLD = 0.1
 
 
 @dataclass(frozen=True)
@@ -113,6 +130,18 @@ class Settings:
         replay_start: Simulated today of the first replay run.
         evaluation_days: Latest trading days held back from training for evaluation,
             an integer of at least FEWEST_EVALUATION_DAYS.
+        retraining_interval_days: Stored trading days from a security's latest training
+            to its next scheduled retraining, an integer from
+            SHORTEST_RETRAINING_INTERVAL to LONGEST_RETRAINING_INTERVAL.
+        drift_window_days: Latest stored trading days each drift check compares, an
+            integer from SHORTEST_DRIFT_WINDOW to LONGEST_DRIFT_WINDOW.
+        prediction_drift_check_interval_days: Stored trading days from one prediction
+            drift check of a security to its next, an integer from
+            SHORTEST_PREDICTION_DRIFT_CHECK_INTERVAL to
+            LONGEST_PREDICTION_DRIFT_CHECK_INTERVAL.
+        drift_p_value_threshold: P-value at or below which a drift check finds drift, a
+            decimal number from LOWEST_DRIFT_P_VALUE_THRESHOLD to
+            HIGHEST_DRIFT_P_VALUE_THRESHOLD.
     """
 
     database_url: str = field(repr=False)
@@ -129,12 +158,43 @@ class Settings:
     replay_database_url: str = field(repr=False)
     replay_start: date
     evaluation_days: int
+    retraining_interval_days: int
+    drift_window_days: int
+    prediction_drift_check_interval_days: int
+    drift_p_value_threshold: float
 
     def exchange_of(self, symbol: str) -> str:
         """Return the exchange of a security; the symbol must be a configured one."""
         # next takes the first item the generator yields: the exchange of the first
         # security with that symbol.
         return next(s.exchange for s in self.securities if s.symbol == symbol)
+
+
+def _read_whole_number(
+    values: dict[str, Any], key: str, lowest: int, highest: int
+) -> int:
+    """Return a whole number of a config file, refusing one outside its range.
+
+    Args:
+        values: The content of the config file.
+        key: Name of the number in the file.
+        lowest: Smallest accepted number.
+        highest: Largest accepted number.
+
+    Returns:
+        The number.
+
+    Raises:
+        ValueError: If the number is not an integer (a float or a boolean is refused
+            too) from lowest to highest.
+    """
+    value = values[key]
+    if type(value) is not int or not lowest <= value <= highest:
+        raise ValueError(
+            f"{key} must be an integer from {lowest} to {highest}, got {value!r}"
+        )
+
+    return value
 
 
 def _minutes(
@@ -155,15 +215,14 @@ def _minutes(
         ValueError: If the value is not an integer (a float or a boolean is refused
             too) from shortest to longest minutes.
     """
-    value = schedule[key]
-    low = shortest // timedelta(minutes=1)
-    high = longest // timedelta(minutes=1)
-    if type(value) is not int or not low <= value <= high:
-        raise ValueError(
-            f"{key} must be an integer from {low} to {high}, got {value!r}"
-        )
+    minutes = _read_whole_number(
+        schedule,
+        key,
+        shortest // timedelta(minutes=1),
+        longest // timedelta(minutes=1),
+    )
 
-    return timedelta(minutes=value)
+    return timedelta(minutes=minutes)
 
 
 def _uncommitted_changes(value: str) -> bool | None:
@@ -199,8 +258,11 @@ def load_settings() -> Settings:
     @relation(REQ-DAT-003, scope=function)
     @relation(REQ-DAT-007, scope=function)
     @relation(REQ-MOD-004, scope=function)
+    @relation(REQ-MOD-006, scope=function)
     @relation(REQ-AUT-005, scope=function)
     @relation(REQ-AUT-007, scope=function)
+    @relation(REQ-MON-001, scope=function)
+    @relation(REQ-MON-002, scope=function)
 
     Returns:
         The settings of this deployment.
@@ -212,9 +274,11 @@ def load_settings() -> Settings:
             is not an integer from SHORTEST_LOAD_LIMIT to LONGEST_LOAD_LIMIT minutes;
             if start_after plus the final delay reaches the next day; if weekdays of the
             daily update are invalid; if evaluation_days is not an integer of at least
-            FEWEST_EVALUATION_DAYS; if a symbol or exchange of the securities file is
-            not a non-empty text; if CODE_HAS_UNCOMMITTED_CHANGES is neither "true",
-            "false" nor empty.
+            FEWEST_EVALUATION_DAYS; if retraining_interval_days, drift_window_days or
+            prediction_drift_check_interval_days is not an integer within its range; if
+            drift_p_value_threshold is not a decimal number within its range; if a
+            symbol or exchange of the securities file is not a non-empty text; if
+            CODE_HAS_UNCOMMITTED_CHANGES is neither "true", "false" nor empty.
     """
     env = os.environ
     # URL.create escapes characters with a meaning in URLs, such as @ in a password.
@@ -262,6 +326,37 @@ def load_settings() -> Settings:
             f"evaluation_days must be an integer of at least {FEWEST_EVALUATION_DAYS},"
             f" got {evaluation_days!r}"
         )
+    retraining_interval_days = _read_whole_number(
+        training,
+        "retraining_interval_days",
+        SHORTEST_RETRAINING_INTERVAL,
+        LONGEST_RETRAINING_INTERVAL,
+    )
+    with DRIFT_CHECKS_FILE.open("rb") as file:
+        drift_checks = tomllib.load(file)
+    drift_window_days = _read_whole_number(
+        drift_checks,
+        "drift_window_days",
+        SHORTEST_DRIFT_WINDOW,
+        LONGEST_DRIFT_WINDOW,
+    )
+    prediction_drift_check_interval_days = _read_whole_number(
+        drift_checks,
+        "prediction_drift_check_interval_days",
+        SHORTEST_PREDICTION_DRIFT_CHECK_INTERVAL,
+        LONGEST_PREDICTION_DRIFT_CHECK_INTERVAL,
+    )
+    drift_p_value_threshold = drift_checks["drift_p_value_threshold"]
+    lowest = LOWEST_DRIFT_P_VALUE_THRESHOLD
+    highest = HIGHEST_DRIFT_P_VALUE_THRESHOLD
+    if (
+        type(drift_p_value_threshold) is not float
+        or not lowest <= drift_p_value_threshold <= highest
+    ):
+        raise ValueError(
+            f"drift_p_value_threshold must be a decimal number from {lowest} to "
+            f"{highest}, got {drift_p_value_threshold!r}"
+        )
     history_start = date.fromisoformat(env["HISTORY_START"])
     if not CALENDAR_START <= history_start <= date.today():
         raise ValueError(
@@ -285,4 +380,8 @@ def load_settings() -> Settings:
         replay_database_url=replay_database_url.render_as_string(hide_password=False),
         replay_start=date.fromisoformat(env["REPLAY_START"]),
         evaluation_days=evaluation_days,
+        retraining_interval_days=retraining_interval_days,
+        drift_window_days=drift_window_days,
+        prediction_drift_check_interval_days=prediction_drift_check_interval_days,
+        drift_p_value_threshold=drift_p_value_threshold,
     )

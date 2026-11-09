@@ -60,7 +60,7 @@ Operation of the running system:
 - Prediction latency (95th percentile) and error rate of the API.
 - Data freshness: trading days after the latest stored day that were final when the security's latest load ran.
 - Missed daily updates: scheduled daily updates after the latest load whose load limit, the longest a load may run, has passed; left out while the replay database exists.
-- Drift share: fraction of monitored features flagged as drifted in the latest check.
+- Drift p-value: the p-value of each drift check; drift is found when the p-value is at or below the drift p-value threshold.
 - Training runs: duration and outcome (succeeded, promoted, kept as candidate).
 
 Threshold values for alerts and drift are configuration, set by the team.
@@ -97,7 +97,7 @@ STATEMENT: >>>
 - Alert thresholds and collection intervals are set in the project's own files, never in a member's environment file.
 - Of the daily update and replay pipelines, only one is switched on at a time.
 - At most one load or replay runs at a time, scheduled or manual; a manual one runs only while the daily update and replay pipelines are paused.
-- At most one training runs at a time, scheduled or manual; a manual one runs only while the training pipeline is paused.
+- At most one training runs at a time, whether scheduled, started because drift was found, or manual; a manual one runs only while the training pipeline is paused.
 - A missed scheduled run is not repeated; the next daily update fetches from the latest stored day.
 - Not guarded against: anyone or anything on the member's own machine — another account, program or web page; every service is published on 127.0.0.1 only, or not at all.
 <<<
@@ -238,6 +238,16 @@ STATEMENT: >>>
 A newly trained model becomes the production model only if it is better than the current production model by the agreed rule; otherwise the current production model stays in place. The first model trained for a security becomes its production model.
 <<<
 
+[REQUIREMENT]
+UID: REQ-MOD-006
+STATUS: Draft
+TAGS: phase-3
+VERIFICATION: Test
+TITLE: Training when needed
+STATEMENT: >>>
+A training request that asks to train only when needed trains a security only when it has no recorded training, when the drift check of REQ-MON-001 finds drift, or when at least the configured number of trading days have been stored since its latest training; the response says whether it trained and why. Any other request always trains.
+<<<
+
 [[/SECTION]]
 
 [[SECTION]]
@@ -260,7 +270,7 @@ TAGS: phase-1
 VERIFICATION: Test
 TITLE: Training endpoint
 STATEMENT: >>>
-The API starts a training run on request and reports its outcome. A symbol that is not a configured security is refused.
+The API starts a training run on request, or skips it as REQ-MOD-006 states for a request that asks to train only when needed, and reports the outcome. A symbol that is not a configured security is refused.
 <<<
 
 [REQUIREMENT]
@@ -325,7 +335,7 @@ TAGS: phase-2
 VERIFICATION: Demonstration
 TITLE: Scheduled training pipeline
 STATEMENT: >>>
-On a configured schedule, the system ingests new quotes, trains and evaluates a model, and applies the promotion rule, without manual steps. A failed run shows its reason on the pipeline's page.
+On a configured schedule, the system ingests new quotes, runs training when needed (REQ-MOD-006), forecasts each configured security and checks the forecasts for drift (REQ-MON-002), without manual steps. When drift is found in the forecasts, a training of every configured security starts. A failed run shows its reason on the pipeline's page.
 <<<
 
 [REQUIREMENT]
@@ -395,7 +405,7 @@ TAGS: phase-2
 VERIFICATION: Demonstration
 TITLE: Training continues past a failed security
 STATEMENT: >>>
-A run of the training pipeline trains every configured security even when the training of one of them fails; the run then fails and names each security whose training failed.
+A run of the training pipeline goes through every configured security, training it or not as REQ-MOD-006 decides, even when the training of one of them fails; the run then fails and names each security whose training failed.
 <<<
 
 [[/SECTION]]
@@ -408,9 +418,9 @@ UID: REQ-MON-001
 STATUS: Draft
 TAGS: phase-3
 VERIFICATION: Test
-TITLE: Training data drift
+TITLE: Feature drift
 STATEMENT: >>>
-Before training, the system compares recent data with historical reference data, records the drift report and metrics with the training run, and retrains when drift exceeds the configured threshold.
+Every training of a security that has a recorded training compares the daily price changes of the latest configured number of stored trading days with those of all stored trading days up to its latest training, and records the drift report and its p-value. Drift is found when the p-value is at or below the configured value.
 <<<
 
 [REQUIREMENT]
@@ -418,9 +428,9 @@ UID: REQ-MON-002
 STATUS: Draft
 TAGS: phase-3
 VERIFICATION: Test
-TITLE: Prediction input drift
+TITLE: Prediction drift
 STATEMENT: >>>
-On a configured schedule, the system compares the input features of stored forecasts with reference data, records the drift report and metrics, and starts the training pipeline when drift exceeds the configured threshold.
+A drift check of a security's scheduled forecasts runs when the security has no earlier such check or when at least the configured number of trading days have been stored since its latest one. It takes, for each of the latest configured number of days with a scheduled forecast, that day's last one, has the production model forecast again from its stored inputs, and compares the results with that model's forecasts for all stored trading days up to the security's latest training. It records the drift report and its p-value and answers whether drift is found (as REQ-MON-001 defines it). A security with fewer days that have a scheduled forecast is not checked, and the answer says why.
 <<<
 
 [REQUIREMENT]
@@ -430,7 +440,7 @@ TAGS: phase-3
 VERIFICATION: Demonstration
 TITLE: Service metrics and dashboard
 STATEMENT: >>>
-The system collects request count, latency and error rate of the API and shows them, together with data freshness and the latest drift share, on a dashboard.
+The system collects request count, latency and error rate of the API and shows them, together with data freshness and, for each security, the latest result of each of its two drift checks (REQ-MON-001, REQ-MON-002), on a dashboard.
 <<<
 
 [REQUIREMENT]

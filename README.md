@@ -5,8 +5,8 @@ through an API. Automated pipelines keep it current: new quotes are loaded, a mo
 trained for each security, and a better model replaces the current one. A dashboard
 shows how the API is used and how up to date the prices are, and alerts fire when the
 API returns server errors, the prices fall behind or a daily update is missed. A web app
-shows the forecasts. Still to come: drift checks, which compare recent data with older
-data and start retraining when the data has changed.
+shows the forecasts. Still to come: a check that compares the model's recent forecasts
+with its earlier ones and starts retraining when they differ.
 
 **Not investment advice.** Short-term prices move close to randomly; every model is
 compared with simple baselines ("tomorrow's price equals today's", and the historical
@@ -23,8 +23,10 @@ runs both on a schedule (`make airflow`). The API reports numbers about its own 
 about how up to date the prices are; Grafana, a tool for dashboards and alerts, shows
 them (`make monitoring`). Training and the forecast work as commands (`make train`,
 `make predict`), and Airflow also runs training when new or replayed prices arrive. The
-web app shows a security's forecast and the model's results (`make webapp`). The drift
-checks are not built yet.
+web app shows a security's forecast and the model's results (`make webapp`). Before
+training, the system tests whether a security's recent daily price changes differ from
+those it was trained on, and records each test in MLflow; the drift check of the
+forecasts is not built yet.
 
 ## Project structure
 ```
@@ -48,8 +50,9 @@ checks are not built yet.
 │       └── training.py          the training pipeline: trains every configured security when new prices arrive; a security whose training fails does not stop the others, and the run then fails, naming each such security
 ├── config/
 │   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
+│   ├── drift_checks.toml        drift checks: days compared, how often the forecasts check runs, p-value threshold
 │   ├── securities.toml          securities to load, train and forecast; market indices to load as reference series
-│   └── training.toml            training: how many of the latest days are held back to score a model
+│   └── training.toml            training: evaluation days and retraining interval
 ├── db/
 │   ├── init/
 │   │   ├── dividends.sql        creates the dividends table where it is missing
@@ -113,7 +116,7 @@ checks are not built yet.
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
 │   ├── predict.py               forecasts, recent closes and production model results
-│   ├── monitoring.py            drift checks (not built yet)
+│   ├── drift_checks.py          drift checks, each recorded as its own run in MLflow
 │   └── api/                     FastAPI app, endpoints, request and response bodies, the numbers at /metrics
 ├── tests/
 │   ├── acceptance/              black-box tests, one or more per testable requirement
@@ -174,7 +177,7 @@ output, errors included.
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
 | `make replay-reset` | delete the replay database and the replay runs and models in MLflow, and remove for good whatever was deleted on the MLflow page; training, forecasts and the API's price history and model results return to the member's own database and models, and the next `make replay` starts over from `REPLAY_START` |
-| `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
+| `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; first, for a security that already has a recorded training, records a feature drift check in MLflow; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
 | `make predict` | print the production model's forecast of the next trading day for each configured security and store each forecast in the table `predictions`, as the API's `/predict` does |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
 | `make test` | unit tests; needs no database |
@@ -238,14 +241,14 @@ latest stored day is copied, nothing is left to replay. While the replay databas
 exists, training and forecasts (`make train` and `make predict` included) use it instead
 of the database it copies from, and so do the API's price history and model results (the
 production model's scores next to the baselines'). Training keeps the replay runs and
-models apart from the member's own in MLflow: runs in the experiment
-`replay-forecasting`, models as `replay-forecast-<symbol>`. Forecasts and model results
-use those replay models, so during a replay the model results are those of the replay's
-production model. Forecasts are stored in the replay database. `make replay-reset`
-deletes the replay database with its forecasts, and these runs and models, model files
-included, to start over. It also removes for good whatever was deleted on the MLflow
-page, and it returns training, forecasts and the API's price history and model results
-to the member's own database and models.
+models apart from the member's own in MLflow: runs in the experiments
+`replay-forecasting` and `replay-drift-checks`, models as `replay-forecast-<symbol>`.
+Forecasts and model results use those replay models, so during a replay the model
+results are those of the replay's production model. Forecasts are stored in the replay
+database. `make replay-reset` deletes the replay database with its forecasts, and these
+runs and models, model files included, to start over. It also removes for good whatever
+was deleted on the MLflow page, and it returns training, forecasts and the API's price
+history and model results to the member's own database and models.
 
 ### Web app
 The web app is the page for looking at the forecasts. `make webapp` starts it together
@@ -472,6 +475,9 @@ the rules are listed there with their state; an alert that fires is listed as fi
 | Load limit: how long a load may run, and when a daily update counts as missed | `config/daily_update.toml` (`load_limit_minutes`) |
 | Final delay after an exchange's close, for every load | `config/daily_update.toml` (`final_delay_minutes`) |
 | "Trading days behind" panel: red from | `grafana/dashboards/api.json` (`thresholds`) |
+| Drift p-value threshold: a drift check finds drift when its p-value is at or below it | `config/drift_checks.toml` (`drift_p_value_threshold`) |
+| Drift window: how many of the latest stored trading days a drift check compares | `config/drift_checks.toml` (`drift_window_days`) |
+| How often the drift check of the forecasts runs, in stored trading days | `config/drift_checks.toml` (`prediction_drift_check_interval_days`) |
 
 #### Known limitations
 - Without data, every alert rule counts as OK: "API error rate" while no request came,
@@ -508,7 +514,11 @@ setting, edit its file:
   which the system loads and checks for freshness but never trains a model for or
   forecasts: reference series that show the trend of the securities' markets.
 - `config/training.toml`: how many of the latest trading days training holds back to
-  score each model (`evaluation_days`).
+  score each model (`evaluation_days`), and after how many stored trading days a
+  security is trained again (`retraining_interval_days`).
+- `config/drift_checks.toml`: how many of the latest days a drift check compares, how
+  often the check of the forecasts runs and the p-value at or below which drift is
+  found; its keys are in [Monitoring settings](#monitoring-settings).
 - `grafana/provisioning/alerting/alerts.yaml` and `grafana/dashboards/api.json`: the
   alert rules and the dashboard, both read-only on the Grafana page; their keys are in
   [Monitoring settings](#monitoring-settings).
@@ -532,13 +542,13 @@ reads `airflow/dags/training.py`. The pipeline trains through the API, which kno
 the securities listed when it started: until `docker compose restart api`, each run
 trains the other securities and fails, naming the new one as unknown to the API.
 
-A value in `config/daily_update.toml` or `config/training.toml` that is not allowed,
-such as a minute value outside its range or one that is not a whole number, is refused:
-the commands, the API and the data service then do not start, and after
-`docker compose restart api` the API stays down. The allowed ranges are set in
-`src/forecasting/config.py`. When `make api`, `make monitoring` or `make airflow` stops
-because a container exited, `docker compose logs api` (or `docker compose logs data`)
-shows the reason.
+A value in `config/daily_update.toml`, `config/training.toml` or
+`config/drift_checks.toml` that is not allowed, such as a minute value outside its range
+or one that is not a whole number, is refused: the commands, the API and the data
+service then do not start, and after `docker compose restart api` the API stays down.
+The allowed ranges are set in `src/forecasting/config.py`. When `make api`,
+`make monitoring` or `make airflow` stops because a container exited,
+`docker compose logs api` (or `docker compose logs data`) shows the reason.
 
 ### EODHD key
 Prices, splits and dividends come from [EODHD](https://eodhd.com). Every member uses

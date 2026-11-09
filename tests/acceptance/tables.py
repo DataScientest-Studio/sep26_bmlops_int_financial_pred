@@ -3,6 +3,7 @@
 import pandas as pd
 from mlflow import MlflowClient
 from mlflow.entities import Run
+from mlflow.entities.model_registry import ModelVersion
 from sqlalchemy import Engine, text
 
 from forecasting.config import Settings
@@ -24,6 +25,24 @@ def run_of(settings: Settings, symbol: str, model_version: str) -> Run:
     assert version.run_id is not None
 
     return client.get_run(version.run_id)
+
+
+def drift_checks(settings: Settings, symbol: str) -> list[Run]:
+    """Read the MLflow runs of a security's drift checks, straight from MLflow."""
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    experiment = client.get_experiment_by_name("drift-checks")
+    assert experiment is not None
+
+    return client.search_runs(
+        [experiment.experiment_id], filter_string=f"tags.symbol = '{symbol}'"
+    )
+
+
+def model_versions(settings: Settings, symbol: str) -> list[ModelVersion]:
+    """Read the registered versions of a security's model, straight from MLflow."""
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+
+    return list(client.search_model_versions(f"name = 'forecast-{symbol}'"))
 
 
 def load_history_around_start(engine: Engine, settings: Settings) -> pd.Series:

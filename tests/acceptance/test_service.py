@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 from mlflow import MlflowClient
 
 from forecasting.config import Security, Settings
@@ -98,6 +99,25 @@ def test_training_endpoint_trains_and_reports_outcome(client, engine, settings):
     assert body["model_version"]
     assert body["promoted"] is True
     assert body["evaluation_days"] > 0
+
+
+def test_failed_training_answers_with_its_reason(
+    client, engine, settings, change_settings
+):
+    """REQ-SVC-002: a training that fails answers 500 with a detail."""
+    load_history(
+        engine,
+        standard_source(),
+        SECURITIES,
+        (),
+        settings.final_delay,
+        settings.history_start,
+    )
+    change_settings(evaluation_days=10_000)
+    failing = TestClient(client.app, raise_server_exceptions=False)
+    response = failing.post("/training", json={"symbol": SECURITIES[0].symbol})
+    assert response.status_code == 500
+    assert set(response.json()) == {"detail"}
 
 
 def test_prediction_endpoint_forecasts_next_trading_day(client, engine, settings):

@@ -39,7 +39,8 @@ the table.
 | Model store | MLflow's model registry keeps the models; the MLflow server keeps its records in a database of its own on the project's PostgreSQL server and the model files in a local S3-compatible object store, SeaweedFS | Coach feedback (registry, PostgreSQL, separate object store); Decided (Tobias) (SeaweedFS) | Oct 22, 2026 6) | [Object store](#object-store), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) item 3 |
 | Monitoring | Evidently for drift; Prometheus and Grafana for the metrics and the dashboard, API usage included | Coach feedback | Oct 22, 2026 6) | REQ-MON-001–005 |
 | Versioning | every training run records the model, the version of the dataset it trained on and the commit of the code it ran, or `unknown` for an image `make` did not build | Coach feedback | Oct 22, 2026 6) | REQ-MOD-004, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) items 3 and 5 |
-| Drift reports | stored in MLflow with the run they belong to; no Evidently UI (can be added later) | Decided (Tobias) | Nov 2, 2026 7) | REQ-MON-001–002 |
+| Drift reports | each drift check is a separate MLflow run in the experiment `drift-checks`, or `replay-drift-checks` while the replay database exists; no Evidently UI (can be added later) | Decided (Tobias) | Nov 2, 2026 7), Nov 9, 2026 11) | REQ-MON-001–002 |
+| Training when needed | a security is trained only when it has no recorded training, when the feature drift check (REQ-MON-001) finds drift, or when at least `retraining_interval_days` (`config/training.toml`) trading days have been stored since its latest training; when drift is found in the forecasts, every configured security is trained; `make train` always trains | Decided (Tobias) | Nov 9, 2026 11) | REQ-MOD-006, REQ-MON-001–002 |
 | Daily update schedule | the schedule and the final delay are team configuration in `config/daily_update.toml`, read by the pipeline and the API | Decided (Tobias) | Nov 4, 2026 8) | [Provisional closes](#provisional-closes) (final delay), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) (schedule settings) |
 | Settings checks | configured values are checked when the API, the data service or a command starts; a missing or out-of-range value stops that start with a message naming the setting; `make contract` checks each stock's exchange against EODHD's list of exchanges | Decided (Tobias) | Nov 4, 2026 8) | REQ-AUT-007 |
 
@@ -65,6 +66,8 @@ coordinator, Oct 22, 2026.
 splits; the model choice and the better-model rule, as built.
 
 10\) Decided by Tobias as coordinator, Nov 7, 2026.
+
+11\) Decided by Tobias as coordinator, Nov 9, 2026.
 
 ### Database
 PostgreSQL, details in `decisions/database.md`. Each member runs their own private
@@ -250,14 +253,15 @@ API (see "Web app" in "Decisions").
 
 Live demo: replay advances the simulated calendar by a few trading days and the chain
 runs on its own — new quotes are loaded, forecasts stored, drift checked, the model
-retrained and promoted if it is better — visible in the app, MLflow and Grafana.
+retrained when drift is found or the retraining interval has passed, and the new model
+promoted if it is better — visible in the app, MLflow and Grafana.
 
 | Period | Milestone | Content |
 |---|---|---|
 | until Mon Oct 12 (coach meeting 12:00) | Foundations: a clone plus `make` gives a database with history, a trained baseline and an API answering `predict/` | "Phase 1 plan" below; roadmap and team setup agreed |
 | Oct 13–22 (coach meeting) | Phase 1 finished and the first phase 2 piece | open items of the "Phase 1 plan"; the agreed "Phase 2 plan" |
 | Oct 23–29 | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | MLflow tracking and registry, "better model" rule, Docker Compose services (database, API, object store, MLflow, Airflow), Airflow DAGs for ingestion and training, replay and trading calendar, DVC snapshots with hashes and the code's commit in MLflow; items in "Phase 2 plan" |
-| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift DAGs (training and prediction side), Prometheus and Grafana with API usage, alerts and the retraining webhook, first web app version; items in "Phase 3 plan" |
+| Oct 30–Nov 6 | Closed loop and monitoring | prediction log and outcome collection, Evidently drift checks (one before each training, one in a pipeline that checks the forecasts), Prometheus and Grafana with API usage, alerts and the retraining webhook, first web app version; items in "Phase 3 plan" |
 | Nov 7–11 | Feature freeze Nov 11 | tests, README and API docs, check from a fresh clone, demo script |
 | Thu Nov 12 | Mock defense call | full demo as at the defense |
 | Nov 13–15 | Polish | fixes from the mock defense, presentation (slides or in the web app) |
@@ -442,7 +446,11 @@ it works. Depends on: in brackets.
     commands read the replay database instead of the member's own and keep replay runs
     and models under `replay-` names in MLflow (for example `replay-forecast-AAPL.US`);
     `make replay-reset` deletes the replay database and the `replay-` records in MLflow,
-    returning the system to the member's own database and models
+    returning the system to the member's own database and models. Phase 3 item 5 extends
+    this pipeline: it also starts when the Airflow asset `prediction_drift_found` is
+    updated; a run started that way trains every configured security, any other run
+    trains only when needed (REQ-MOD-006); after training it makes one forecast per
+    configured security and updates the asset `scheduled_forecasts`
 - [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for
   REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
 
@@ -491,19 +499,32 @@ in brackets.
     status group per route, and the trading days behind per security
   - [x] Prometheus and Grafana in Compose (`make monitoring`) with the dashboard "API":
     requests per second, response time, error rate, trading days behind
-  - [ ] the latest drift share on the dashboard (5)
+  - [ ] each security's latest feature drift and prediction drift results (REQ-MON-001,
+    REQ-MON-002) on the dashboard (5)
 - [x] **3 Prediction log** (1; REQ-SVC-003): every forecast, made through the API or a
   command, is stored with its input features, model version and time of request
 - [ ] **4 Outcome collection** (3; REQ-AUT-002): once a predicted day's actual quote is
   stored, it is recorded against each forecast for that day and the production error
   is computed
-- [ ] **5 Drift checks** (REQ-MON-001, REQ-MON-002)
-  - [ ] before training, recent data is compared with historical reference data; the
-    drift report and metrics are recorded with the training run, and the model is
-    retrained when drift exceeds the configured threshold (1; REQ-MON-001)
-  - [ ] on a configured schedule, the input features of stored forecasts are compared
-    with reference data; the report and metrics are recorded, and the training pipeline
-    starts when drift exceeds the configured threshold (1, 3; REQ-MON-002)
+- [ ] **5 Drift checks and training when needed** (REQ-MOD-006, REQ-MON-001,
+  REQ-MON-002, REQ-AUT-001)
+  - [x] training when needed: a security is trained only when it has no recorded
+    training, when the feature drift check finds drift, or when at least
+    `retraining_interval_days` trading days have been stored since its latest training;
+    the feature drift check compares the daily price changes of the latest
+    `drift_window_days` stored trading days with those of all days up to the latest
+    training, and records its report and p-value as its own MLflow run (1; REQ-MOD-006,
+    REQ-MON-001)
+  - [ ] scheduled forecasts and the prediction drift check: after training, the training
+    pipeline makes one scheduled forecast per configured security; the pipeline
+    `prediction_drift_check` has the production model forecast again from the inputs of
+    recent scheduled forecasts, and compares these with its forecasts for the days up to
+    the security's latest training; when drift is found, every configured security is
+    trained (1, 3; REQ-MON-002, REQ-AUT-001)
+  - [x] settings: `drift_window_days`, `prediction_drift_check_interval_days` and
+    `drift_p_value_threshold` in `config/drift_checks.toml`, `retraining_interval_days`
+    in `config/training.toml`; each service checks their ranges when it starts
+    (REQ-AUT-007)
 - [ ] **6 Alerts** (REQ-MON-004, REQ-MON-005)
   - [x] Grafana raises an alert when the API's error rate crosses its configured
     threshold (2; REQ-MON-004)
@@ -521,8 +542,9 @@ in brackets.
     every page and the model results next to the baselines (REQ-APP-001, REQ-APP-002,
     REQ-APP-003)
 - [ ] **8 Acceptance tests of phase 3**: written before the code of each item, for
-  REQ-SVC-001, REQ-SVC-003, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007, REQ-AUT-002,
-  REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001 and REQ-APP-003
+  REQ-MOD-006, REQ-SVC-001, REQ-SVC-003, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007,
+  REQ-AUT-002, REQ-AUT-007, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001 and
+  REQ-APP-003
 
 ## Open
 - Organisational setup: proposal in `docs/team.md` (areas and owners, meetings,

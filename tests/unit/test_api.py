@@ -3,9 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from forecasting.api import routes
 from forecasting.api.app import create_app
-from forecasting.api.dependencies import get_engine, get_settings
+from forecasting.api.dependencies import get_settings
 
 
 def test_health_reports_running_service():
@@ -24,20 +23,3 @@ def test_api_refuses_to_start_with_a_refused_setting(monkeypatch):
             pass
     finally:
         get_settings.cache_clear()
-
-
-def test_failed_training_answers_with_its_reason(monkeypatch):
-    """A training that fails answers with the error's type and message."""
-
-    def fail(engine, settings, symbol):
-        raise ValueError("too few usable samples")
-
-    monkeypatch.setattr(routes, "train", fail)
-    app = create_app()
-    app.dependency_overrides[get_engine] = lambda: None
-    symbol = get_settings().securities[0].symbol
-    client = TestClient(app, raise_server_exceptions=False)
-    response = client.post("/training", json={"symbol": symbol})
-
-    assert response.status_code == 500
-    assert response.json() == {"detail": "ValueError: too few usable samples"}

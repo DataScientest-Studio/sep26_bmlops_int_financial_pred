@@ -1,3 +1,9 @@
+# How training scores each model, and when a security is trained again.
+
 # Latest trading days held back from training to score each model, in whole days.
 # Training refuses a value that leaves a security too few earlier days to learn from.
 evaluation_days = 60
+# How many stored trading days pass before a security is trained again; when drift is
+# found earlier, it is trained sooner. A value of 1 trains it again on every trading
+# day. Its range is set in src/forecasting/config.py.
+retraining_interval_days = 5

@@ -11,6 +11,7 @@ from forecasting.api.schemas import (
     ModelResponse,
     ScoresResponse,
     SecurityRequest,
+    TrainingRequest,
     TrainingResponse,
 )
 from forecasting.config import Settings
@@ -20,7 +21,7 @@ from forecasting.predict import (
     production_results,
     recent_closes,
 )
-from forecasting.train import train
+from forecasting.train import decide_training, train
 
 router = APIRouter()
 # Most trading days of closes one history request may ask for, about four years; keeps
@@ -72,19 +73,33 @@ def predict_endpoint(
 
 @router.post("/training", response_model=TrainingResponse)
 def training_endpoint(
-    request: SecurityRequest, engine: EngineDep, settings: SettingsDep
+    request: TrainingRequest, engine: EngineDep, settings: SettingsDep
 ) -> TrainingResponse:
-    """Train a model for the security and report the outcome.
+    """Decide whether the request trains the security, train it if so, and report why.
 
     A symbol that is not a configured security gets 404.
 
     @relation(REQ-SVC-002, scope=function)
+    @relation(REQ-MOD-006, scope=function)
     """
     _refuse_unknown(request.symbol, settings)
-    result = train(engine, settings, request.symbol)
+    decision = decide_training(
+        engine, settings, request.symbol, request.only_when_needed
+    )
+    if not decision.trains:
+        return TrainingResponse(
+            symbol=request.symbol,
+            trained=False,
+            training_decision_reason=decision.training_decision_reason,
+            feature_drift_p_value=decision.feature_drift_p_value,
+        )
+    result = train(engine, settings, request.symbol, decision.drift_check_run_id)
 
     return TrainingResponse(
         symbol=result.symbol,
+        trained=True,
+        training_decision_reason=decision.training_decision_reason,
+        feature_drift_p_value=decision.feature_drift_p_value,
         model_version=result.model_version,
         promoted=result.promoted,
         evaluation_days=result.evaluation.days,

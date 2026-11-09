@@ -13,7 +13,7 @@ from forecasting.eodhd import EodhdSource
 from forecasting.load import LoadReport, load_history
 from forecasting.predict import predict
 from forecasting.replay import replay_next_day, reset_replay
-from forecasting.train import train
+from forecasting.train import decide_training, train
 
 
 def run_load() -> LoadReport:
@@ -101,11 +101,17 @@ def train_models() -> None:
 
     @relation(REQ-MOD-001, scope=function)
     @relation(REQ-MOD-002, scope=function)
+    @relation(REQ-MON-001, scope=function)
     """
     settings = load_settings()
     engine = connect(settings.database_url)
     for security in settings.securities:
-        result = train(engine, settings, security.symbol)
+        # Training always runs here; the decision first runs the feature drift check,
+        # whose run id the training run records.
+        decision = decide_training(
+            engine, settings, security.symbol, only_when_needed=False
+        )
+        result = train(engine, settings, security.symbol, decision.drift_check_run_id)
         scores = result.evaluation
         status = "promoted" if result.promoted else "production kept"
         # Adjacent f-strings are joined without a space, so each continuation starts

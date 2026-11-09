@@ -69,7 +69,8 @@ replay-reset:
 		sh -c 'mlflow gc --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"'
 
 # Trains a model for each configured security on its final closes, holding back the
-# latest evaluation_days of config/training.toml for scoring; records the run and
+# latest evaluation_days of config/training.toml for scoring; before training a security
+# with a recorded training, records a feature drift check in MLflow; records the run and
 # registers the model in MLflow, promotes it if it is the first or beats the production
 # model, and prints its scores next to both baselines.
 train:
