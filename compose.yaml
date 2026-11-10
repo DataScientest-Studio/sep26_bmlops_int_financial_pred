@@ -210,15 +210,10 @@ services:
   # The MLflow server and its page on 127.0.0.1: stores run and model records in
   # PostgreSQL and model files in the object store.
   mlflow:
-    image: financial-prediction:local
     build:
       context: .
-      args:
-        CODE_COMMIT: ${CODE_COMMIT:-unknown}
-        CODE_HAS_UNCOMMITTED_CHANGES: ${CODE_HAS_UNCOMMITTED_CHANGES:-}
-    # The image's entrypoint run-as-owner looks up the owner of /app/datasets; MLflow
-    # mounts no project folder and writes no host files, so it starts directly.
-    entrypoint: []
+      target: packages
+    image: financial-prediction-packages:local
     command:
       - mlflow
       - server

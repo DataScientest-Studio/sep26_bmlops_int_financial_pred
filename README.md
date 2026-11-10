@@ -44,8 +44,8 @@ again.
 ├── uv.lock                      exact versions of all packages, written by uv
 ├── .python-version              Python version
 ├── .gitignore                   files Git leaves out, among them .env, the Python environment, the datasets folder, price data (CSV) and caches
-├── Dockerfile                   project image: the code with its locked packages, for the commands, the API, the data service and the MLflow server
-├── .dockerignore                what the project image and the web app image are built from
+├── Dockerfile                   two images: the packages image holds only the locked packages, for the MLflow server; the project image adds the code, for the commands, the API and the data service
+├── .dockerignore                what every image is built from
 ├── compose.yaml                 services run in Docker: the PostgreSQL database, the object store, the MLflow server, the API, the web app, the data service, Airflow, Prometheus, Grafana, and the project commands on demand
 ├── .env.example                 template for the local .env (database login, Airflow, MLflow, web app and Grafana ports, Airflow and Grafana logins, object-store login, MLflow address for programs run on this machine outside Docker, first day of history, replay start and interval, EODHD key)
 ├── airflow/

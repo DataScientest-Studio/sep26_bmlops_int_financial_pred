@@ -17,6 +17,13 @@ unexport PYTHONPATH
 export CODE_COMMIT = $(shell git rev-parse HEAD)
 export CODE_HAS_UNCOMMITTED_CHANGES = $(if $(shell git status --porcelain --untracked-files=no),true,false)
 
+# This Makefile builds every image without the provenance record that BuildKit adds by
+# default. That record changes with every build, so an unchanged image would get a new
+# id. Compose would then restart the services that run the image, such as the MLflow
+# server, even while the API is using it. The record is for published images, and the
+# project publishes none.
+export BUILDX_NO_DEFAULT_ATTESTATIONS = 1
+
 # Creates .venv with the pinned Python and the locked packages.
 setup:
 	uv sync --locked
@@ -128,9 +135,9 @@ webapp:
 webapp-stop:
 	docker compose stop webapp
 
-# Starts the MLflow server and its page with the database and the object store,
-# rebuilt when the code changed; returns once it answers on localhost at the port
-# MLFLOW_PORT from .env.
+# Starts the MLflow server, its page, the database and the object store, rebuilding the
+# server if pyproject.toml, uv.lock or .python-version changed; returns once it answers
+# on localhost at the port MLFLOW_PORT from .env.
 mlflow:
 	docker compose up --build --detach --wait mlflow
 

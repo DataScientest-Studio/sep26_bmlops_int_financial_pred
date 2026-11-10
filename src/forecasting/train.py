@@ -9,7 +9,7 @@ import mlflow
 import pandas as pd
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
-from mlflow.sklearn import load_model, log_model
+from mlflow.sklearn import get_default_pip_requirements, load_model, log_model
 from mlflow.utils.mlflow_tags import MLFLOW_GIT_COMMIT, MLFLOW_GIT_DIRTY
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import make_pipeline
@@ -299,7 +299,16 @@ def train(
                 "mean_change_forecast": evaluation.mean_change_forecast,
             }
         )
-        logged = log_model(model, name="model", registered_model_name=model_name)
+        # Without pip_requirements, MLflow records the packages of the uv project in the
+        # current folder, all but its dev group; with them it records MLflow itself and
+        # what loading the model needs: scikit-learn and skops, at their installed
+        # versions.
+        logged = log_model(
+            model,
+            name="model",
+            registered_model_name=model_name,
+            pip_requirements=get_default_pip_requirements(include_skops=True),
+        )
         model_version = str(logged.registered_model_version)
         if promoted:
             client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
