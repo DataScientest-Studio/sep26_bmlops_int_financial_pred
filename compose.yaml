@@ -1,10 +1,13 @@
+# How the project image is built. Only api and commands carry it, so one Compose call
+# builds the image once.
+x-project-build: &project-build
+  context: .
+  args:
+    CODE_COMMIT: ${CODE_COMMIT:-unknown}
+    CODE_HAS_UNCOMMITTED_CHANGES: ${CODE_HAS_UNCOMMITTED_CHANGES:-}
+
 # Settings of the services that run from the project image.
 x-project: &project
-  build:
-    context: .
-    args:
-      CODE_COMMIT: ${CODE_COMMIT:-unknown}
-      CODE_HAS_UNCOMMITTED_CHANGES: ${CODE_HAS_UNCOMMITTED_CHANGES:-}
   image: financial-prediction:local
   env_file: .env
   # Inside Compose the database and the MLflow server are reached by their service
@@ -82,6 +85,7 @@ services:
   # `docker compose up`.
   commands:
     <<: *project
+    build: *project-build
     profiles: [commands]
     entrypoint: [run-as-owner, python, -m, forecasting.commands]
     depends_on:
@@ -96,6 +100,7 @@ services:
 
   api:
     <<: *project
+    build: *project-build
     # Listens on every address inside its container; the host publishes it on 127.0.0.1.
     command: [uvicorn, "forecasting.api.app:app", --host, 0.0.0.0, --port, "8000"]
     ports:
@@ -144,6 +149,8 @@ services:
   # Compose, so no port is published on the host.
   data:
     <<: *project
+    # Runs the image that api builds, so it never pulls it from a registry.
+    pull_policy: never
     command: [uvicorn, "forecasting.data_service:app", --host, 0.0.0.0, --port, "8000"]
     healthcheck:
       test:
@@ -155,11 +162,13 @@ services:
       timeout: 5s
       retries: 15
 
-  # Holds the model files for MLflow and the dataset copies for DVC; reachable only
-  # inside Compose on its S3 port 8333, so no port is published on the host.
+  # Holds the model files for MLflow and the dataset copies for DVC. No port is
+  # published on the host; the other services reach it inside Compose, on its S3 port
+  # 8333.
   object-store:
     image: chrislusf/seaweedfs:4.48
-    command: [mini, -dir=/data, "-bucket=mlflow,datasets"]
+    # SeaweedFS sends no usage reports to its makers.
+    command: [mini, -dir=/data, -master.telemetry=false, "-bucket=mlflow,datasets"]
     environment:
       AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
       AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
