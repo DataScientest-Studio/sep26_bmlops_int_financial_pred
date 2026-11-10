@@ -87,12 +87,15 @@ reset:
 # latest evaluation_days of config/training.toml for scoring; before training a security
 # with a recorded training, records a feature drift check in MLflow; records the run and
 # registers the model in MLflow, promotes it if it is the first or beats the production
-# model, and prints its scores next to both baselines.
+# model, and prints its scores next to both baselines. A security that fails does not
+# stop the others: at the end the command fails and names each failed security with its
+# reason.
 train:
 	$(COMMAND_ENV) train
 
 # Prints the production model's forecast of the next trading day for each configured
-# security.
+# security. A security that fails does not stop the others: at the end the command fails
+# and names each failed security with its reason.
 predict:
 	$(COMMAND_ENV) predict
 

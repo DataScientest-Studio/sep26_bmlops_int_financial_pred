@@ -312,7 +312,16 @@ Design choices and the schedule are not requirements; they are recorded in the p
 **Tags**: phase-2 \
 **VERIFICATION**: Demonstration
 
-**Statement**: A run of the training pipeline goes through every configured security, training it or not as REQ-MOD-006 decides, even when the training of one of them fails; the run then fails and names each security whose training failed.
+**Statement**: A run of the training pipeline goes through every configured security, training it or not as REQ-MOD-006 decides and then forecasting it, even when one of them fails; the run then fails and names each security that failed.
+
+### A failed command shows its reason
+
+**UID**: REQ-AUT-009 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Inspection
+
+**Statement**: When a command of the system fails, it ends with exit status 1 and shows its reason, never a traceback. The commands train and predict go through every configured security even when one security fails, and then fail, naming each failed security with its reason.
 
 ## Monitoring
 

@@ -111,7 +111,7 @@ again.
 ├── src/forecasting/             the service
 │   ├── commands.py              commands the Makefile runs (load, replay, replay-reset, train, predict); the data service runs the same load and replay
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
-│   ├── failures.py              the answer the API and the data service give when a request fails unexpectedly
+│   ├── failures.py              the answer the API and the data service give when a request fails unexpectedly, and the reason a command shows when it fails
 │   ├── config.py                settings from .env and config/
 │   ├── db.py                    database connection, reading prices and scheduled forecasts, creating and dropping databases
 │   ├── datasets.py              version ids of the training datasets, recorded with DVC
@@ -177,6 +177,12 @@ are not running. Trained models are recorded in MLflow (see
 `datasets/` of the project folder and never committed; the containers run as the owner
 of that folder, so the files belong to you. `docker compose logs api` shows the API's
 output, errors included.
+
+A project command that fails shows its reason on the error output, never a traceback,
+and ends with exit status 1, so `make` stops at it. `make train` and `make predict` go
+through every configured security even when one fails. They print each failure
+immediately, starting with the security's symbol; after the last security, the command
+fails and names each failed security with its reason.
 
 | Command | Effect |
 |---|---|
