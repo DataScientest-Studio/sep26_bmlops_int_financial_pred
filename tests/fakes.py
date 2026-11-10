@@ -14,6 +14,9 @@ from forecasting.trading_calendar import next_trading_day, trading_days
 SECURITIES = (Security("TEST.US", "XNYS"), Security("TEST.DE", "XETR"))
 INDICES = (Security("TEST.INDX", "XNYS"),)
 FETCHED_AT = datetime.fromisoformat("2026-01-02T12:00:00+00:00")
+# Ten daily changes that sum to 0, and the same changes ten times as large.
+CALM = (0.01, -0.01, 0.005, -0.005, 0.02, -0.02, 0.0, 0.015, -0.015, 0.0)
+VOLATILE = tuple(change * 10 for change in CALM)
 
 
 def price_history(exchange: str, start: str, end: str, seed: int) -> pd.DataFrame:

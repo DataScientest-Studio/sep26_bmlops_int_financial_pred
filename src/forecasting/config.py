@@ -133,8 +133,9 @@ class Settings:
         retraining_interval_days: Stored trading days from a security's latest training
             to its next scheduled retraining, an integer from
             SHORTEST_RETRAINING_INTERVAL to LONGEST_RETRAINING_INTERVAL.
-        drift_window_days: Latest stored trading days each drift check compares, an
-            integer from SHORTEST_DRIFT_WINDOW to LONGEST_DRIFT_WINDOW.
+        drift_window_days: Latest days each drift check compares: stored trading days,
+            or days with a scheduled forecast for the prediction drift check; an integer
+            from SHORTEST_DRIFT_WINDOW to LONGEST_DRIFT_WINDOW.
         prediction_drift_check_interval_days: Stored trading days from one prediction
             drift check of a security to its next, an integer from
             SHORTEST_PREDICTION_DRIFT_CHECK_INTERVAL to

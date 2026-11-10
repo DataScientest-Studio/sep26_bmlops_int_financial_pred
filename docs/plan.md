@@ -447,10 +447,10 @@ it works. Depends on: in brackets.
     and models under `replay-` names in MLflow (for example `replay-forecast-AAPL.US`);
     `make replay-reset` deletes the replay database and the `replay-` records in MLflow,
     returning the system to the member's own database and models. Phase 3 item 5 extends
-    this pipeline: it also starts when the Airflow asset `prediction_drift_found` is
+    this pipeline: it also starts when the Airflow asset `prediction-drift-found` is
     updated; a run started that way trains every configured security, any other run
     trains only when needed (REQ-MOD-006); after training it makes one forecast per
-    configured security and updates the asset `scheduled_forecasts`
+    configured security and updates the asset `scheduled-forecasts`
 - [ ] **8 Acceptance tests of phase 2**: written before the code of each item, for
   REQ-DAT-003, REQ-DAT-006, REQ-MOD-004, REQ-MOD-005, REQ-AUT-003 and REQ-AUT-005
 
@@ -506,7 +506,7 @@ in brackets.
 - [ ] **4 Outcome collection** (3; REQ-AUT-002): once a predicted day's actual quote is
   stored, it is recorded against each forecast for that day and the production error
   is computed
-- [ ] **5 Drift checks and training when needed** (REQ-MOD-006, REQ-MON-001,
+- [x] **5 Drift checks and training when needed** (REQ-MOD-006, REQ-MON-001,
   REQ-MON-002, REQ-AUT-001)
   - [x] training when needed: a security is trained only when it has no recorded
     training, when the feature drift check finds drift, or when at least
@@ -515,7 +515,7 @@ in brackets.
     `drift_window_days` stored trading days with those of all days up to the latest
     training, and records its report and p-value as its own MLflow run (1; REQ-MOD-006,
     REQ-MON-001)
-  - [ ] scheduled forecasts and the prediction drift check: after training, the training
+  - [x] scheduled forecasts and the prediction drift check: after training, the training
     pipeline makes one scheduled forecast per configured security; the pipeline
     `prediction_drift_check` has the production model forecast again from the inputs of
     recent scheduled forecasts, and compares these with its forecasts for the days up to

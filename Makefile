@@ -1,6 +1,6 @@
 .PHONY: setup requirements lint \
         db db-stop db-shell \
-        load update replay replay-reset train predict \
+        load update replay replay-reset reset train predict \
         test acceptance contract \
         api api-stop \
         webapp webapp-stop \
@@ -67,6 +67,14 @@ replay-reset:
 	$(COMMAND_ENV) replay-reset
 	docker compose exec -e MLFLOW_TRACKING_URI=http://localhost:5000 mlflow \
 		sh -c 'mlflow gc --backend-store-uri "$$MLFLOW_BACKEND_STORE_URI"'
+
+# Stops every service and deletes everything stored: the database with prices, forecasts
+# and the records of MLflow and Airflow, the object store, the pipeline logs, the
+# monitoring history and the dataset copies. The next start creates every table from
+# db/init; make update loads the history again.
+reset:
+	docker compose --profile commands down --volumes
+	find datasets -mindepth 1 ! -name .gitkeep -delete
 
 # Trains a model for each configured security on its final closes, holding back the
 # latest evaluation_days of config/training.toml for scoring; before training a security

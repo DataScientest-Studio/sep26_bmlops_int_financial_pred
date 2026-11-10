@@ -6,8 +6,9 @@ from `.env.example`. Each pytest-xdist worker gets its own database, created fro
 `db/init/`, so workers never share data.
 """
 
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +28,7 @@ from forecasting.drift_checks import (
     REPLAY_DRIFT_CHECKS_EXPERIMENT_NAME,
 )
 from forecasting.train import EXPERIMENT_NAME, REPLAY_EXPERIMENT_NAME
-from tests.fakes import INDICES, SECURITIES
+from tests.fakes import FETCHED_AT, INDICES, SECURITIES
 
 
 @pytest.fixture(scope="session")
@@ -75,6 +76,45 @@ def engine(database_url: str) -> Iterator[Engine]:
         )
     yield engine
     engine.dispose()
+
+
+@pytest.fixture
+def store_forecast(engine: Engine) -> Callable[..., None]:
+    """Give a test a function that stores one forecast row in this worker's database."""
+
+    def store(
+        symbol: str,
+        day: str,
+        requested_at: str,
+        scheduled: bool,
+        changes: Sequence[float],
+    ) -> None:
+        """Insert a forecast of `day` requested at `requested_at`, both ISO format."""
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO predictions (symbol, day, change, model_version, "
+                    "start_close, start_fetched_at, change_1, change_2, change_3, "
+                    "change_4, change_5, requested_at, scheduled) VALUES "
+                    "(:symbol, :day, 0.99, 'v1', 100, :fetched_at, :change_1, "
+                    ":change_2, :change_3, :change_4, :change_5, :requested_at, "
+                    ":scheduled)"
+                ),
+                {
+                    "symbol": symbol,
+                    "day": date.fromisoformat(day),
+                    "fetched_at": FETCHED_AT,
+                    "change_1": changes[0],
+                    "change_2": changes[1],
+                    "change_3": changes[2],
+                    "change_4": changes[3],
+                    "change_5": changes[4],
+                    "requested_at": datetime.fromisoformat(requested_at),
+                    "scheduled": scheduled,
+                },
+            )
+
+    return store
 
 
 @pytest.fixture

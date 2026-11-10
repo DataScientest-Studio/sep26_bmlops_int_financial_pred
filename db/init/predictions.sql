@@ -15,5 +15,6 @@ CREATE TABLE IF NOT EXISTS predictions (
     change_4          double precision NOT NULL,
     change_5          double precision NOT NULL,
     requested_at      timestamptz      NOT NULL,
+    scheduled         boolean          NOT NULL,
     PRIMARY KEY (id)
 );

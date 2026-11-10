@@ -5,8 +5,9 @@ through an API. Automated pipelines keep it current: new quotes are loaded, a mo
 trained for each security, and a better model replaces the current one. A dashboard
 shows how the API is used and how up to date the prices are, and alerts fire when the
 API returns server errors, the prices fall behind or a daily update is missed. A web app
-shows the forecasts. Still to come: a check that compares the model's recent forecasts
-with its earlier ones and starts retraining when they differ.
+shows the forecasts. A prediction drift check compares each security's recent forecasts
+with the forecasts its production model makes for the days it was trained on. When they
+differ, the model of every security is trained again.
 
 **Not investment advice.** Short-term prices move close to randomly; every model is
 compared with simple baselines ("tomorrow's price equals today's", and the historical
@@ -22,11 +23,16 @@ chains of tasks (pipelines) at set times or when another pipeline announces new 
 runs both on a schedule (`make airflow`). The API reports numbers about its own use and
 about how up to date the prices are; Grafana, a tool for dashboards and alerts, shows
 them (`make monitoring`). Training and the forecast work as commands (`make train`,
-`make predict`), and Airflow also runs training when new or replayed prices arrive. The
-web app shows a security's forecast and the model's results (`make webapp`). Before
-training, the system tests whether a security's recent daily price changes differ from
-those it was trained on, and records each test in MLflow; the drift check of the
-forecasts is not built yet.
+`make predict`). Airflow also runs training when new or replayed prices arrive, and then
+makes one scheduled forecast of each security: a forecast the training pipeline makes
+and marks, so that the prediction drift check can use it. The web app shows a security's
+forecast and the model's results (`make webapp`). Before training, the system tests
+whether a security's recent daily price changes differ from those it was trained on.
+This test, the feature drift check, is recorded in MLflow. After the scheduled
+forecasts, Airflow asks the API to test whether the production model's recent forecasts
+differ from its forecasts for the days it was trained on. This test, the prediction
+drift check, is recorded in MLflow too; when it finds drift, every security is trained
+again.
 
 ## Project structure
 ```
@@ -45,19 +51,20 @@ forecasts is not built yet.
 ├── airflow/
 │   └── dags/
 │       ├── daily_update.py      the daily update pipeline: one load on the days and at the time config/daily_update.toml sets
+│       ├── prediction_drift_check.py  the prediction drift check pipeline: runs after the scheduled forecasts, asks the API to check each configured security for prediction drift, and announces drift when any check finds it; a check that ends in an error does not stop the others, and the run then fails, naming each such security
 │       ├── replay.py            the replay pipeline: one replayed trading day per interval
-│       ├── service_call.py      the call of a project service every pipeline makes; a failed call raises an error that gives the reason the service answered with, or says the service could not be reached
-│       └── training.py          the training pipeline: trains every configured security when new prices arrive; a security whose training fails does not stop the others, and the run then fails, naming each such security
+│       ├── service_call.py      the calls the pipelines make to the project's services: a single call, or one call for each security in config/securities.toml, which is read again at each run; a failed call gives the reason the service answered with, or the error reported when no answer came
+│       └── training.py          the training pipeline: runs on new prices, replayed prices or prediction drift; after prediction drift it trains every configured security, otherwise only those the API finds due; then it makes one scheduled forecast of each; a failed training or forecast does not stop the others, and the run then fails, naming each such security
 ├── config/
 │   ├── daily_update.toml        when the daily update loads, how long a load may run and when a fetched price is final
-│   ├── drift_checks.toml        drift checks: days compared, how often the forecasts check runs, p-value threshold
+│   ├── drift_checks.toml        drift checks: drift window, check interval of the prediction drift check, drift p-value threshold
 │   ├── securities.toml          securities to load, train and forecast; market indices to load as reference series
 │   └── training.toml            training: evaluation days and retraining interval
 ├── db/
 │   ├── init/
 │   │   ├── dividends.sql        creates the dividends table where it is missing
 │   │   ├── loads.sql            creates the loads table: each security's latest fetch time
-│   │   ├── predictions.sql      creates the predictions table: one row per forecast
+│   │   ├── predictions.sql      creates the predictions table: one row per forecast, with whether it was scheduled
 │   │   ├── prices.sql           creates the prices table where it is missing
 │   │   └── splits.sql           creates the splits table where it is missing
 │   ├── queries/
@@ -106,7 +113,7 @@ forecasts is not built yet.
 │   ├── data_service.py          the data service: runs the load and the replay for the scheduled pipelines
 │   ├── failures.py              the answer the API and the data service give when a request fails unexpectedly
 │   ├── config.py                settings from .env and config/
-│   ├── db.py                    database connection, reading prices, creating and dropping databases
+│   ├── db.py                    database connection, reading prices and scheduled forecasts, creating and dropping databases
 │   ├── datasets.py              version ids of the training datasets, recorded with DVC
 │   ├── trading_calendar.py      trading days of each exchange
 │   ├── load.py                  loading prices, splits and dividends from a data source
@@ -115,7 +122,7 @@ forecasts is not built yet.
 │   ├── features.py              model inputs and target
 │   ├── train.py                 training of one security's model
 │   ├── evaluate.py              scores of model and baselines
-│   ├── predict.py               forecasts, recent closes and production model results
+│   ├── predict.py               forecasts, the prediction drift check, recent closes and production model results
 │   ├── drift_checks.py          drift checks, each recorded as its own run in MLflow
 │   └── api/                     FastAPI app, endpoints, request and response bodies, the numbers at /metrics
 ├── tests/
@@ -156,8 +163,10 @@ in a Docker volume and survives restarts. The tables `prices`, `splits`, `divide
 only create the tables a database lacks, so the member's own database gains a table
 added to `db/init/` without a reload. The replay database (see "Replay" below) gains it
 only once `make replay-reset` deletes the replay database and the next `make replay`
-creates it again. A change to a table that exists takes effect only on an empty volume
-(`docker compose down --volumes` deletes the data).
+creates it again. A change to a table that already exists takes effect only after the
+database is deleted and created again: `make reset` (see the table below) deletes the
+stored data, and the next `make` command that starts the database creates every table
+from `db/init/`.
 
 `make load`, `make update`, `make replay`, `make replay-reset`, `make train`,
 `make predict` and `make api` run in the project image (`Dockerfile`), with the packages
@@ -177,6 +186,7 @@ output, errors included.
 | `make load`, `make update` | load prices, splits and dividends from EODHD with your key: a security without stored prices from `HISTORY_START` on, otherwise only its new days; prints how many quotes were stored, replaced, rejected and missing |
 | `make replay` | copy the next stored day from the database into the replay database; prints the day replayed (see "Replay" below) |
 | `make replay-reset` | delete the replay database and the replay runs and models in MLflow, and remove for good whatever was deleted on the MLflow page; training, forecasts and the API's price history and model results return to the member's own database and models, and the next `make replay` starts over from `REPLAY_START` |
+| `make reset` | stop every service and delete everything stored, for good: the database with the prices, the forecasts and the records of MLflow and Airflow, the object store, the pipeline logs, the monitoring history and the copies in `datasets/`; the next `make` command that starts the database creates every table from `db/init/`, and `make update` loads the history again; needed after a change to a table that already exists |
 | `make train` | train a model for each configured security on its final closes, holding back the latest days (`evaluation_days` in `config/training.toml`) for scoring; first, for a security that already has a recorded training, records a feature drift check in MLflow; records the run and registers the model in MLflow; promotes it to production if it is the security's first or has a lower error than the production model on the same latest days (the production model is scored again on those days); prints its scores next to both baselines and whether it was promoted or production was kept |
 | `make predict` | print the production model's forecast of the next trading day for each configured security and store each forecast in the table `predictions`, as the API's `/predict` does |
 | `make lint` | code style, formatting and type check (ruff, pyright); changes no files |
@@ -238,17 +248,18 @@ lie between the first and the latest stored day. Each later run copies the repla
 database's latest day again, so a price that has become final since replaces the
 provisional one, and then the next stored day. Each run copies all or nothing. Once the
 latest stored day is copied, nothing is left to replay. While the replay database
-exists, training and forecasts (`make train` and `make predict` included) use it instead
-of the database it copies from, and so do the API's price history and model results (the
-production model's scores next to the baselines'). Training keeps the replay runs and
-models apart from the member's own in MLflow: runs in the experiments
-`replay-forecasting` and `replay-drift-checks`, models as `replay-forecast-<symbol>`.
-Forecasts and model results use those replay models, so during a replay the model
-results are those of the replay's production model. Forecasts are stored in the replay
-database. `make replay-reset` deletes the replay database with its forecasts, and these
-runs and models, model files included, to start over. It also removes for good whatever
-was deleted on the MLflow page, and it returns training, forecasts and the API's price
-history and model results to the member's own database and models.
+exists, training, forecasts (`make train` and `make predict` included) and the
+prediction drift check use it instead of the database it copies from, and so do the
+API's price history and model results (the production model's scores next to the
+baselines'). Training keeps the replay runs and models apart from the member's own in
+MLflow: runs in the experiments `replay-forecasting` and `replay-drift-checks`, models
+as `replay-forecast-<symbol>`. Forecasts, model results and the prediction drift check
+use those replay models, so during a replay the model results are those of the replay's
+production model. Forecasts are stored in the replay database. `make replay-reset`
+deletes the replay database with its forecasts, and these runs and models, model files
+included, to start over. It also removes for good whatever was deleted on the MLflow
+page, and it returns training, forecasts and the API's price history and model results
+to the member's own database and models.
 
 ### Web app
 The web app is the page for looking at the forecasts. `make webapp` starts it together
@@ -290,8 +301,8 @@ project's database server, both created on the first start. Of the project's set
 receives only `REPLAY_INTERVAL_SECONDS` from `.env` and the folder `config/`, which it
 can read but not change; it never receives the EODHD key. Its tasks call two services,
 both inside Docker: the data service, which runs loads and replays, and the API, which
-runs training. The data service is not reachable from the host; the API is, at
-`http://localhost:8000`.
+runs training, forecasts and drift checks. The data service is not reachable from the
+host; the API is, at `http://localhost:8000`.
 
 The daily update pipeline (`daily_update`) runs one load on the days and at the time
 that `config/daily_update.toml` sets, the same load as `make update`. Its settings are
@@ -311,37 +322,84 @@ run is not made up, and a run that is still going delays the next one. Once the 
 stored day is replayed, each run is skipped: switch the pipeline off and run
 `make replay-reset`.
 
-The daily update and replay pipelines announce their work, so that a pipeline waiting
-for new prices can start on it. What they announce is an asset, Airflow's word for a
-named marker that a pipeline announces when a run succeeds and that other pipelines wait
-for. The daily update pipeline announces the asset `prices` after each load, also after
-one that found no new trading day; the replay pipeline announces the asset
-`replay-prices` after each replayed day. The page lists both under "Assets". A skipped
-or failed run announces nothing.
+The pipelines announce their work, so that another pipeline can start on it. What they
+announce is an asset, Airflow's word for a named marker that a task announces when it
+succeeds and that pipelines wait for. A pipeline announces an asset through one of its
+tasks, and a skipped or failed task announces nothing. The daily update pipeline
+announces the asset `prices` after each load, also after one that found no new trading
+day; the replay pipeline announces the asset `replay-prices` after each replayed day.
+The training pipeline announces the asset `scheduled-forecasts` after its forecasts, and
+the prediction drift check pipeline announces the asset `prediction-drift-found` when a
+check finds drift. The page lists all four under "Assets".
 
-The training pipeline (`training`) starts whenever either asset, `prices` or
-`replay-prices`, is announced. One run trains each security listed in
-`config/securities.toml` through the API, one after the other, with the same training as
-`make train`: it records the run, registers the model and promotes it if it is the
-security's first or beats the production model. While the replay database exists, it
-trains on that database (see [Replay](#replay)). Only one training-pipeline run goes at
-a time; announcements that arrive during a run start one further run after it has ended.
-A failed run is not repeated. The training pipeline announces nothing.
+The training pipeline (`training`) starts whenever one of the assets `prices`,
+`replay-prices` or `prediction-drift-found` is announced. Each run reads
+`config/securities.toml` and goes through each security listed there, one after the
+other. For each security it asks the API for the same training as `make train`: the API
+records the run, registers the model and promotes it if it is the security's first or
+beats the production model. A run started by new or replayed prices, or by hand, trains
+a security only when the API finds it needed: the security has no recorded training, the
+feature drift check finds drift in its recent daily price changes, or its retraining
+interval has been reached. A run started by `prediction-drift-found` trains every
+configured security.
+
+After the training, the run makes one scheduled forecast of each security through the
+API, the same forecast as `make predict`, stored in the table `predictions` and marked
+as scheduled. That task succeeds, and the pipeline announces the asset
+`scheduled-forecasts`, also when the forecast of one security fails; the run then fails
+at its last task. Forecasts that the web app, `make predict` or any other caller asks
+for are not scheduled and take no part in the prediction drift check. While the replay
+database exists, the run trains and forecasts on that database (see [Replay](#replay)).
+Only one training-pipeline run goes at a time; announcements that arrive during a run
+start one further run after it has ended. A failed run is not repeated.
+
+The prediction drift check pipeline (`prediction_drift_check`) starts whenever the asset
+`scheduled-forecasts` is announced. For each security listed in
+`config/securities.toml`, one after the other, the pipeline asks the API to run the
+prediction drift check. The API first decides whether a check is due. It does not check
+when the security has fewer scheduled forecasts than the days of the drift window.
+Otherwise it checks when the security has no earlier check, or when at least as many
+stored trading days as the check interval have come after its latest check. When neither
+holds, the check is not due. Its answer says whether it checked and which of these
+reasons applied. A security without a production model gets an error instead, so its
+check ends in an error.
+
+A check works on two sets of forecasts made by the security's production model. The
+first set holds the latest scheduled forecast of each of the last drift-window days that
+have one; the model forecasts these days again from the inputs stored with their
+scheduled forecasts. The second set holds the model's forecasts for every stored trading
+day with a final close and complete inputs, up to the security's latest training. The
+check tests whether the two sets differ. Each check is recorded as its own run in the
+MLflow experiment `drift-checks`. While the replay database exists, the check reads that
+database and records its runs in `replay-drift-checks` (see [Replay](#replay)). The
+drift window, the check interval and the drift p-value threshold are in the table under
+[Monitoring settings](#monitoring-settings).
+
+When any check finds drift, the run announces the asset `prediction-drift-found`, and
+that announcement starts the training pipeline for every security. When no check finds
+drift, the task that announces drift is skipped, and nothing is announced. Only one run
+of this pipeline goes at a time; announcements that arrive during a run start one
+further run after it has ended. A failed run is not repeated.
 
 A failed run shows its reason in the log of the failed task on the page, for example an
 error EODHD answered with. For the daily update and replay pipelines, the full error is
-in `docker compose logs data`. The training pipeline trains every security even when the
-training of one fails: its task log shows each failure as it happens. After the last
-security the run fails, and its task log ends with one message that lists each security
-whose training failed, with the reason the API gave or the note that the API could not
-be reached. The API's log (`docker compose logs api`) holds the full error.
+in `docker compose logs data`. The training pipeline goes through every security even
+when the training or the forecast of one fails: its task logs show each failure as it
+happens. After the last security the run fails, and the log of its final task ends with
+one message that lists each security that failed, with the reason the API gave or the
+error reported when no answer came. The prediction drift check pipeline also asks for
+the check of every security even when the check of one ends in an error. After the last
+security, it first announces any drift it found and then fails, with the same kind of
+message that lists each failed security. The API's log (`docker compose logs api`) holds
+the full error.
 
 A pipeline starts paused: switch it on with its toggle on the page. Switch on only one
 of the daily update and replay pipelines at a time, and while either is on, run none of
 `make load`, `make update`, `make replay` or `make replay-reset` by hand. The training
-pipeline may be on with either of them. While the training pipeline is on, start no
-training by hand, neither `make train` nor a request to the API's `/training`: at most
-one training may run at a time.
+pipeline and the prediction drift check pipeline may be on with either of them and with
+each other. While the training pipeline is on, start no training by hand, neither
+`make train` nor a request to the API's `/training`: at most one training may run at a
+time.
 
 ### Dataset versions
 A training dataset gets a version id: its rows are written to `datasets/<symbol>.csv`
@@ -476,8 +534,8 @@ the rules are listed there with their state; an alert that fires is listed as fi
 | Final delay after an exchange's close, for every load | `config/daily_update.toml` (`final_delay_minutes`) |
 | "Trading days behind" panel: red from | `grafana/dashboards/api.json` (`thresholds`) |
 | Drift p-value threshold: a drift check finds drift when its p-value is at or below it | `config/drift_checks.toml` (`drift_p_value_threshold`) |
-| Drift window: how many of the latest stored trading days a drift check compares | `config/drift_checks.toml` (`drift_window_days`) |
-| How often the drift check of the forecasts runs, in stored trading days | `config/drift_checks.toml` (`prediction_drift_check_interval_days`) |
+| Drift window: how many of the latest days a drift check compares with the days up to the latest training (stored trading days for the feature drift check, days with a scheduled forecast for the prediction drift check) | `config/drift_checks.toml` (`drift_window_days`) |
+| Check interval of the prediction drift check: how many stored trading days must pass after a security's latest check before the next one is due | `config/drift_checks.toml` (`prediction_drift_check_interval_days`) |
 
 #### Known limitations
 - Without data, every alert rule counts as OK: "API error rate" while no request came,
@@ -516,9 +574,10 @@ setting, edit its file:
 - `config/training.toml`: how many of the latest trading days training holds back to
   score each model (`evaluation_days`), and after how many stored trading days a
   security is trained again (`retraining_interval_days`).
-- `config/drift_checks.toml`: how many of the latest days a drift check compares, how
-  often the check of the forecasts runs and the p-value at or below which drift is
-  found; its keys are in [Monitoring settings](#monitoring-settings).
+- `config/drift_checks.toml`: how many of the latest days a drift check compares (the
+  drift window), after how many stored trading days the next prediction drift check of a
+  security is due (the check interval), and the p-value at or below which a check finds
+  drift; its keys are in [Monitoring settings](#monitoring-settings).
 - `grafana/provisioning/alerting/alerts.yaml` and `grafana/dashboards/api.json`: the
   alert rules and the dashboard, both read-only on the Grafana page; their keys are in
   [Monitoring settings](#monitoring-settings).
@@ -537,10 +596,11 @@ picks up a changed dashboard file by itself within seconds. A change to the file
 - in a command, when it next runs;
 - in the API, after `docker compose restart api`.
 
-A change to `config/securities.toml` reaches the training pipeline when Airflow next
-reads `airflow/dags/training.py`. The pipeline trains through the API, which knows only
-the securities listed when it started: until `docker compose restart api`, each run
-trains the other securities and fails, naming the new one as unknown to the API.
+A change to `config/securities.toml` reaches the training pipeline and the prediction
+drift check pipeline at their next run, since each run reads the file. They call the
+API, which knows only the securities listed when it started: until
+`docker compose restart api`, each run trains, forecasts or checks the other securities
+and then fails, naming the new security as unknown to the API.
 
 A value in `config/daily_update.toml`, `config/training.toml` or
 `config/drift_checks.toml` that is not allowed, such as a minute value outside its range

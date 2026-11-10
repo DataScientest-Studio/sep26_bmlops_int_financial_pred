@@ -56,7 +56,7 @@ x-airflow: &airflow
     REPLAY_INTERVAL_SECONDS: ${REPLAY_INTERVAL_SECONDS:?set in .env}
   volumes:
     - ./airflow/dags:/opt/airflow/dags:ro
-    # Read by the daily update and training pipelines.
+    # Read by the daily update, training and prediction drift check pipelines.
     - ./config:/opt/airflow/project-config:ro
     - airflow-logs:/opt/airflow/logs
 

@@ -7,8 +7,10 @@ from fastapi import APIRouter, HTTPException, Query
 from forecasting.api.dependencies import EngineDep, SettingsDep
 from forecasting.api.schemas import (
     CloseResponse,
+    ForecastRequest,
     ForecastResponse,
     ModelResponse,
+    PredictionDriftCheckResponse,
     ScoresResponse,
     SecurityRequest,
     TrainingRequest,
@@ -17,6 +19,7 @@ from forecasting.api.schemas import (
 from forecasting.config import Settings
 from forecasting.predict import (
     NoProductionModel,
+    check_forecasts_for_drift,
     predict,
     production_results,
     recent_closes,
@@ -53,7 +56,7 @@ def health() -> dict[str, str]:
 
 @router.post("/predict", response_model=ForecastResponse)
 def predict_endpoint(
-    request: SecurityRequest, engine: EngineDep, settings: SettingsDep
+    request: ForecastRequest, engine: EngineDep, settings: SettingsDep
 ) -> ForecastResponse:
     """Return the production model's forecast for the next trading day.
 
@@ -64,7 +67,7 @@ def predict_endpoint(
     """
     _refuse_unknown(request.symbol, settings)
     try:
-        forecast = predict(engine, settings, request.symbol)
+        forecast = predict(engine, settings, request.symbol, request.scheduled)
     except NoProductionModel as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
 
@@ -86,7 +89,7 @@ def training_endpoint(
     decision = decide_training(
         engine, settings, request.symbol, request.only_when_needed
     )
-    if not decision.trains:
+    if not decision.training_decision_reason.trains:
         return TrainingResponse(
             symbol=request.symbol,
             trained=False,
@@ -106,6 +109,32 @@ def training_endpoint(
         model_mae=result.evaluation.model.mae,
         persistence_mae=result.evaluation.persistence.mae,
         mean_change_mae=result.evaluation.mean_change.mae,
+    )
+
+
+@router.post("/prediction-drift-check", response_model=PredictionDriftCheckResponse)
+def prediction_drift_check_endpoint(
+    request: SecurityRequest, engine: EngineDep, settings: SettingsDep
+) -> PredictionDriftCheckResponse:
+    """Check the security's scheduled forecasts for drift when a check is due.
+
+    A symbol that is not a configured security, or a security without a production
+    model, gets 404.
+
+    @relation(REQ-MON-002, scope=function)
+    """
+    _refuse_unknown(request.symbol, settings)
+    try:
+        check = check_forecasts_for_drift(engine, settings, request.symbol)
+    except NoProductionModel as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return PredictionDriftCheckResponse(
+        symbol=request.symbol,
+        checked=check.check_decision_reason.check_runs,
+        check_decision_reason=check.check_decision_reason,
+        prediction_drift_p_value=check.prediction_drift_p_value,
+        prediction_drift_found=check.prediction_drift_found,
     )
 
 

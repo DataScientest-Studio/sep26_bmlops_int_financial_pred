@@ -1,11 +1,11 @@
-# How the drift checks compare a security's latest stored trading days with the days up
-# to its latest training. The ranges and the reasons for them are in
-# src/forecasting/config.py.
+# How the drift checks compare a security's latest days with the days up to its latest
+# training. The ranges and the reasons for them are in src/forecasting/config.py.
 
-# How many of the latest stored trading days each drift check compares.
+# How many of the latest days each drift check compares with the days up to the latest
+# training: stored trading days for the feature drift check, days with a scheduled
+# forecast for the prediction drift check.
 drift_window_days = 60
-# How many stored trading days pass between two checks of a security's forecasts for
-# drift.
+# How many stored trading days pass between two prediction drift checks of a security.
 prediction_drift_check_interval_days = 5
 # A check finds drift when its p-value (0 to 1) is at or below this value.
 drift_p_value_threshold = 0.01

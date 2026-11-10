@@ -53,6 +53,11 @@ class TrainingDecisionReason(StrEnum):
     RETRAINING_INTERVAL_REACHED = "retraining interval reached"
     NOT_NEEDED = "not needed"
 
+    @property
+    def trains(self) -> bool:
+        """Tell whether the security is trained for this reason."""
+        return self != TrainingDecisionReason.NOT_NEEDED
+
 
 @dataclass(frozen=True)
 class TrainingResult:
@@ -91,11 +96,6 @@ class TrainingDecision:
     training_decision_reason: TrainingDecisionReason
     feature_drift_p_value: float | None
     drift_check_run_id: str | None
-
-    @property
-    def trains(self) -> bool:
-        """Tell whether the security is trained."""
-        return self.training_decision_reason != TrainingDecisionReason.NOT_NEEDED
 
 
 def training_experiment_name(replaying: bool) -> str:
@@ -386,7 +386,7 @@ def find_latest_training(
     """
     client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
     experiment = client.get_experiment_by_name(training_experiment_name(replaying))
-    # No experiment yet: nothing was ever trained.
+    # The experiment does not exist yet, so nothing was ever trained.
     if experiment is None:
         return None
     # A failed run is marked FAILED; a run cut off before its last step lacks the

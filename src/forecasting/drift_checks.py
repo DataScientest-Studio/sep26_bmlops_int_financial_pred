@@ -2,18 +2,50 @@
 
 from dataclasses import dataclass
 from datetime import date
+from enum import StrEnum
+from typing import Any
 
 import mlflow
 import pandas as pd
 from evidently import Report
 from evidently.core.report import Snapshot
 from evidently.metrics import ValueDrift
+from mlflow import MlflowClient
 
 from forecasting.config import Settings
+from forecasting.features import build_features
 from forecasting.replay import REPLAY_PREFIX
 
 DRIFT_CHECKS_EXPERIMENT_NAME = "drift-checks"
 REPLAY_DRIFT_CHECKS_EXPERIMENT_NAME = f"{REPLAY_PREFIX}{DRIFT_CHECKS_EXPERIMENT_NAME}"
+# Name of the run parameter in which a drift check records the latest stored trading day
+# it saw; the next prediction drift check is due `prediction_drift_check_interval_days`
+# stored trading days after it.
+LATEST_DAY_CHECKED = "latest_day_checked"
+
+
+class DriftKind(StrEnum):
+    """Which values a drift check compares: daily changes or forecasts."""
+
+    FEATURE = "feature"
+    PREDICTION = "prediction"
+
+
+class PredictionDriftCheckReason(StrEnum):
+    """Why a prediction drift check of a security runs, or why not."""
+
+    NO_EARLIER_CHECK = "no earlier check"
+    CHECK_INTERVAL_REACHED = "check interval reached"
+    NOT_DUE = "not due"
+    TOO_FEW_SCHEDULED_FORECASTS = "too few scheduled forecasts"
+
+    @property
+    def check_runs(self) -> bool:
+        """Tell whether the check runs for this reason."""
+        return self in {
+            PredictionDriftCheckReason.NO_EARLIER_CHECK,
+            PredictionDriftCheckReason.CHECK_INTERVAL_REACHED,
+        }
 
 
 @dataclass(frozen=True)
@@ -130,16 +162,134 @@ def check_feature_drift(
     test = run_drift_test(
         reference, recent, "daily_change", settings.drift_p_value_threshold
     )
+    latest_day_checked = prices["day"].iloc[-1]
+
+    return _record_drift_check(
+        settings,
+        symbol,
+        DriftKind.FEATURE,
+        test,
+        latest_day_checked,
+        prices_until,
+        replaying,
+    )
+
+
+def check_prediction_drift(
+    settings: Settings,
+    symbol: str,
+    model: Any,
+    prices: pd.DataFrame,
+    scheduled_forecasts: pd.DataFrame,
+    prices_until: date,
+    replaying: bool,
+) -> DriftCheckResult:
+    """Test whether a model's forecasts drifted since the security's latest training.
+
+    The model forecasts again from the stored inputs of the latest `drift_window_days`
+    scheduled forecasts, and from the inputs of every stored trading day up to
+    `prices_until`; the two sets of forecasts are compared. The check is recorded as its
+    own run in MLflow: the report as JSON, and as HTML when drift is found.
+
+    @relation(REQ-MON-002, scope=function)
+
+    Args:
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+        model: The security's production model.
+        prices: The security's prices with a final close, oldest first, corrected for
+            splits.
+        scheduled_forecasts: Inputs of the latest scheduled forecast of each day, oldest
+            first, as from `forecasting.db.read_scheduled_forecasts`.
+        prices_until: Last day of the prices the security's latest training used.
+        replaying: Whether the replay database exists; replay checks are recorded in
+            their own experiment.
+
+    Returns:
+        The id of the check's run, its p-value and whether drift is found.
+    """
+    # The reference is the model's forecasts from the inputs of every stored trading day
+    # up to the latest training, built exactly as in training. A row is usable when
+    # every input is present; the first days lack the history for them.
+    features = build_features(prices)
+    reference_days = features.notna().all(axis=1) & (prices["day"] <= prices_until)
+    reference = pd.Series(model.predict(features[reference_days]))
+    # The recent forecasts come from the same model and the stored inputs of the latest
+    # scheduled forecasts, with the columns in the order the model learned them.
+    window = scheduled_forecasts.tail(settings.drift_window_days)
+    recent = pd.Series(model.predict(window[features.columns]))
+    test = run_drift_test(
+        reference, recent, "forecast", settings.drift_p_value_threshold
+    )
+    latest_day_checked = prices["day"].iloc[-1]
+
+    return _record_drift_check(
+        settings,
+        symbol,
+        DriftKind.PREDICTION,
+        test,
+        latest_day_checked,
+        prices_until,
+        replaying,
+    )
+
+
+def find_latest_prediction_drift_check(
+    settings: Settings, symbol: str, replaying: bool
+) -> date | None:
+    """Return the latest trading day a security's latest prediction drift check saw.
+
+    @relation(REQ-MON-002, scope=function)
+
+    Args:
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+        replaying: Whether the replay database exists; replay checks are recorded in
+            their own experiment.
+
+    Returns:
+        That day, or None when the security has no finished prediction drift check.
+    """
+    client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
+    experiment = client.get_experiment_by_name(drift_checks_experiment_name(replaying))
+    # The experiment does not exist yet, so nothing was ever checked.
+    if experiment is None:
+        return None
+    runs = client.search_runs(
+        [experiment.experiment_id],
+        filter_string=(
+            f"tags.symbol = '{symbol}' and tags.drift_kind = '{DriftKind.PREDICTION}'"
+            " and attributes.status = 'FINISHED'"
+        ),
+        order_by=["attributes.start_time DESC"],
+        max_results=1,
+    )
+    if not runs:
+        return None
+
+    return date.fromisoformat(runs[0].data.params[LATEST_DAY_CHECKED])
+
+
+def _record_drift_check(
+    settings: Settings,
+    symbol: str,
+    drift_kind: DriftKind,
+    test: DriftTestResult,
+    latest_day_checked: date,
+    prices_until: date,
+    replaying: bool,
+) -> DriftCheckResult:
+    """Record a drift check as its own run in MLflow and return its outcome."""
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     # The experiment is named in start_run, not only set: MLflow keeps the active
-    # experiment for the whole process, and the API trains in several threads.
+    # experiment for the whole process, and the API runs requests in several threads.
     experiment = mlflow.set_experiment(drift_checks_experiment_name(replaying))
-    tags = {"symbol": symbol, "drift_kind": "feature"}
+    tags = {"symbol": symbol, "drift_kind": drift_kind}
     with mlflow.start_run(experiment_id=experiment.experiment_id, tags=tags) as run:
         mlflow.log_params(
             {
                 "drift_window_days": settings.drift_window_days,
-                "latest_day_checked": prices["day"].iloc[-1],
+                LATEST_DAY_CHECKED: latest_day_checked,
                 "reference_last_day": prices_until,
             }
         )

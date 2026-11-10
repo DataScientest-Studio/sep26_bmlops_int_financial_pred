@@ -5,16 +5,34 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from forecasting.drift_checks import PredictionDriftCheckReason
 from forecasting.train import TrainingDecisionReason
 
 
 class SecurityRequest(BaseModel):
     """Names the security a request is about.
 
-    @relation(REQ-SVC-001, REQ-SVC-002, scope=class)
+    @relation(REQ-SVC-001, REQ-SVC-002, REQ-MON-002, scope=class)
     """
 
     symbol: Annotated[str, Field(min_length=1, max_length=20, examples=["AAPL.US"])]
+
+
+class ForecastRequest(SecurityRequest):
+    """Names the security to forecast and whether the forecast is scheduled.
+
+    @relation(REQ-SVC-001, REQ-MON-002, scope=class)
+    """
+
+    scheduled: Annotated[
+        bool,
+        Field(
+            description=(
+                "Set by the training pipeline; only scheduled forecasts take part in"
+                " the prediction drift check."
+            )
+        ),
+    ] = False
 
 
 class TrainingRequest(SecurityRequest):
@@ -82,6 +100,22 @@ class TrainingResponse(BaseModel):
     model_mae: float | None = None
     persistence_mae: float | None = None
     mean_change_mae: float | None = None
+
+
+class PredictionDriftCheckResponse(BaseModel):
+    """Outcome of a prediction drift check; the drift fields are null when not checked.
+
+    @relation(REQ-MON-002, scope=class)
+    """
+
+    symbol: str
+    checked: bool
+    check_decision_reason: Annotated[
+        PredictionDriftCheckReason,
+        Field(description="Why the scheduled forecasts were checked or not."),
+    ]
+    prediction_drift_p_value: float | None = None
+    prediction_drift_found: bool | None = None
 
 
 class CloseResponse(BaseModel):
