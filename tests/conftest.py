@@ -6,6 +6,12 @@ from `.env.example`. Each pytest-xdist worker gets its own database, created fro
 `db/init/`, so workers never share data.
 """
 
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.request
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from datetime import date, datetime
@@ -29,6 +35,9 @@ from forecasting.drift_checks import (
 )
 from forecasting.train import EXPERIMENT_NAME, REPLAY_EXPERIMENT_NAME
 from tests.fakes import FETCHED_AT, INDICES, SECURITIES
+
+# Seconds a throwaway MLflow server may take to answer its health check.
+MLFLOW_START_LIMIT = 60
 
 
 @pytest.fixture(scope="session")
@@ -148,6 +157,84 @@ def settings(
         securities=SECURITIES,
         indices=INDICES,
     )
+
+
+def _wait_until_healthy(
+    server: subprocess.Popen[bytes], url: str, log_path: Path
+) -> None:
+    """Return once the MLflow server at `url` answers its health check.
+
+    Fails the test run if the server exits or does not answer within
+    `MLFLOW_START_LIMIT` seconds; the failure names the server's log and, if the
+    server exited, its exit status.
+    """
+    deadline = time.monotonic() + MLFLOW_START_LIMIT
+    while time.monotonic() < deadline:
+        if server.poll() is not None:
+            pytest.fail(
+                f"MLflow server exited with status {server.returncode}; "
+                f"log: {log_path}",
+                pytrace=False,
+            )
+        try:
+            with urllib.request.urlopen(f"{url}/health", timeout=2):
+                return
+        except OSError:
+            time.sleep(0.2)
+    pytest.fail(
+        f"MLflow server did not answer within {MLFLOW_START_LIMIT} s (still running); "
+        f"log: {log_path}",
+        pytrace=False,
+    )
+
+
+@pytest.fixture(scope="session")
+def mlflow_server_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """Start a throwaway MLflow server on 127.0.0.1 for this worker; stop it at the end.
+
+    The server keeps its records and its log in a folder of its own; it starts only in a
+    worker whose tests ask for it.
+    """
+    folder = tmp_path_factory.mktemp("mlflow_server")
+    log_path = folder / "server.log"
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    with log_path.open("wb") as log:
+        server = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "mlflow",
+                "server",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "--workers",
+                "1",
+                "--backend-store-uri",
+                f"sqlite:///{folder / 'mlflow.db'}",
+                "--default-artifact-root",
+                str(folder / "artifacts"),
+            ],
+            cwd=folder,
+            # The tests run no MLflow jobs, so the server starts without its job runner.
+            env=os.environ | {"MLFLOW_SERVER_ENABLE_JOB_EXECUTION": "false"},
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+    url = f"http://127.0.0.1:{port}"
+    try:
+        _wait_until_healthy(server, url, log_path)
+        yield url
+    finally:
+        server.terminate()
+        try:
+            server.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            server.kill()
+            server.wait()
 
 
 @pytest.fixture

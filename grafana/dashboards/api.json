@@ -78,6 +78,118 @@
           "legendFormat": "{{symbol}}"
         }
       ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Drift",
+      "description": "The latest finished feature drift and prediction drift check of each security: whether it found drift, and its p-value.",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Feature drift" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": { "text": "no", "color": "green" },
+                      "1": { "text": "yes", "color": "red" }
+                    }
+                  }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Prediction drift" },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": { "text": "no", "color": "green" },
+                      "1": { "text": "yes", "color": "red" }
+                    }
+                  }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Feature p-value" },
+            "properties": [{ "id": "decimals", "value": 6 }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Prediction p-value" },
+            "properties": [{ "id": "decimals", "value": 6 }]
+          }
+        ]
+      },
+      "transformations": [
+        { "id": "joinByField", "options": { "byField": "symbol", "mode": "outerTabular" } },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Time 1": true,
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true
+            },
+            "indexByName": {
+              "symbol": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3,
+              "Value #D": 4
+            },
+            "renameByName": {
+              "symbol": "Security",
+              "Value #A": "Feature drift",
+              "Value #B": "Feature p-value",
+              "Value #C": "Prediction drift",
+              "Value #D": "Prediction p-value"
+            }
+          }
+        }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (symbol) (drift_found{drift_kind=\"feature\"})",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "max by (symbol) (drift_p_value{drift_kind=\"feature\"})",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "max by (symbol) (drift_found{drift_kind=\"prediction\"})",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "D",
+          "expr": "max by (symbol) (drift_p_value{drift_kind=\"prediction\"})",
+          "instant": true,
+          "format": "table"
+        }
+      ]
     }
   ]
 }

@@ -54,7 +54,8 @@ class DriftTestResult:
 
     Attributes:
         p_value: P-value of the two-sample Kolmogorov-Smirnov test: the smaller it is,
-            the less likely the recent and the reference values share one distribution.
+            the stronger the evidence that the recent and the reference values come
+            from different distributions.
         drift_found: True when `p_value` is at or below the threshold.
         report: Evidently's report of the test, to store as JSON or HTML.
     """

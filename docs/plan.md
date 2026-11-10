@@ -83,27 +83,27 @@ endpoints (add, list, remove). The web app logs in as a user. Builds on the cour
 API security exercise.
 
 ### Test strategy
-requirements first. Each requirement names how it is checked: Test, Demonstration or
-Inspection (`requirements.md`, "How requirements are checked"). For every requirement
-checked by Test, black-box acceptance tests are written before the code (TDD); the share
-of passing acceptance tests is the progress indicator (`make acceptance`, which starts
-the database first and also runs the integration tests). Below them: unit tests for the
-pure functions (features, target, no look-ahead, baselines, metrics, trading calendar),
-API tests with swapped-in parts, and integration tests (`tests/integration/`) that test
-our code against the real database, a throwaway one with a small fixed price set.
-`make test` runs the unit tests only and needs no database; a test that needs the
-database stops with "Cannot log in to the database with the values of .env.example;
-start it with make db and keep those values in .env" when it cannot log in to the
-database. The tests take the settings of `.env.example`; the database login and port in
-a member's `.env` must match them. Each pytest-xdist worker gets its own test database;
-tests never use a cloud service or real e-mail, and never the network, with one
-exception: the contract tests of the data source (`make contract`) call EODHD with the
-member's own key from `.env`, to notice when EODHD changes how it delivers data. They
-are not part of `make test` or CI, and each check the key's history, remaining calls or
-plan cannot support is skipped with its reason. No model-quality thresholds: tests check
-that the comparison with the baselines is computed, not that the model wins. Acceptance
-tests of phase 1 are in `tests/acceptance/`; those of phases 2 and 3 are written when
-each phase starts.
+Each requirement names how it is checked: Test, Demonstration or Inspection
+(`requirements.md`, "How requirements are checked"). For every requirement checked by
+Test, black-box acceptance tests are written before the code (TDD); the share of passing
+acceptance tests is the progress indicator (`make acceptance`, which starts the database
+first and also runs the integration tests). Below them: unit tests for the pure
+functions (features, target, no look-ahead, baselines, metrics, trading calendar), API
+tests with swapped-in parts, and integration tests (`tests/integration/`) that test our
+code against the real database, a throwaway one with a small fixed price set. Some of
+them also start a throwaway MLflow server on the local machine. `make test` runs the
+unit tests only and needs no database; a test that needs the database stops with "Cannot
+log in to the database with the values of .env.example; start it with make db and keep
+those values in .env" when it cannot log in to the database. The tests take the settings
+of `.env.example`; the database login and port in a member's `.env` must match them.
+Each pytest-xdist worker gets its own test database; tests never use a cloud service or
+real e-mail, and never the network, with one exception: the contract tests of the data
+source (`make contract`) call EODHD with the member's own key from `.env`, to notice
+when EODHD changes how it delivers data. They are not part of `make test` or CI, and
+each check the key's history, remaining calls or plan cannot support is skipped with its
+reason. No model-quality thresholds: tests check that the comparison with the baselines
+is computed, not that the model wins. Acceptance tests of phase 1 are in
+`tests/acceptance/`; those of phases 2 and 3 are written when each phase starts.
 
 ### Continuous integration
 Every push runs the style and type checks and the unit tests on GitHub
@@ -494,12 +494,12 @@ in brackets.
   served by `predict/` (Phase 1 item 5, Phase 2 item 4), and the retraining of item 5
   and the webhook of item 6, which need the training pipeline (Phase 2 item 7); the
   other items need neither.
-- [ ] **2 Service metrics and dashboard** (REQ-MON-003)
+- [x] **2 Service metrics and dashboard** (REQ-MON-003)
   - [x] the API reports at `/metrics` the request count, the response time and the
     status group per route, and the trading days behind per security
   - [x] Prometheus and Grafana in Compose (`make monitoring`) with the dashboard "API":
     requests per second, response time, error rate, trading days behind
-  - [ ] each security's latest feature drift and prediction drift results (REQ-MON-001,
+  - [x] each security's latest feature drift and prediction drift results (REQ-MON-001,
     REQ-MON-002) on the dashboard (5)
 - [x] **3 Prediction log** (1; REQ-SVC-003): every forecast, made through the API or a
   command, is stored with its input features, model version and time of request
