@@ -118,8 +118,8 @@ acceptance: db
 contract:
 	MLFLOW_DISABLE_TELEMETRY=true uv run --env-file .env pytest -n auto --dist loadscope -m eodhd --tb=short
 
-# Starts the API in the project image, rebuilt when the code changed, on
-# http://localhost:8000 (docs at /docs); returns once it answers.
+# Starts the API in the project image, rebuilt when the code changed; returns once it
+# answers on localhost at the port API_PORT from .env (docs at /docs).
 api:
 	mkdir -p datasets
 	docker compose up --build --detach --wait api
