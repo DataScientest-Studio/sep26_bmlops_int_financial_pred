@@ -24,6 +24,9 @@ export CODE_HAS_UNCOMMITTED_CHANGES = $(if $(shell git status --porcelain --untr
 # project publishes none.
 export BUILDX_NO_DEFAULT_ATTESTATIONS = 1
 
+# Pinned lychee image for the link check.
+LYCHEE_IMAGE := lycheeverse/lychee:0.24.2-alpine
+
 # Creates .venv with the pinned Python and the locked packages.
 setup:
 	uv sync --locked
@@ -32,11 +35,15 @@ setup:
 requirements:
 	tools/export-requirements.sh
 
-# Checks code style, formatting and types; changes no files.
+# Checks code style, formatting, types and Markdown links; changes no files.
 lint:
 	uv run ruff check
 	uv run ruff format --check
-	uv run pyright
+	PYRIGHT_PYTHON_IGNORE_WARNINGS=1 uv run pyright
+	git ls-files --cached --others --exclude-standard '*.md' \
+	  | docker run --rm --interactive --network none \
+	    --volume "$(CURDIR):/repo:ro" --workdir /repo \
+	    $(LYCHEE_IMAGE) --offline --include-fragments --no-progress --files-from -
 
 # Starts the database and waits until it accepts connections.
 db:
