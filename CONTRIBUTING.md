@@ -54,6 +54,21 @@ strategy] for how the layers fit together.
 
 [Test strategy]: ARCHITECTURE.md#test-strategy
 
+## Tests
+
+-   An HTTP test asserts the status first, then the body.
+-   A test never compares the text of a message.
+-   A test never replaces the project's own functions with stand-ins; it
+    replaces only what lies outside the project (the data source) and the API's
+    shared parts in `forecasting.api.dependencies`, which exist to be replaced.
+-   An acceptance test checks one sentence of a requirement through the public
+    interface and cites the requirement's id at the start of its docstring. A
+    unit test checks a promise of a function's docstring and cites no
+    requirement.
+-   Test strings are in double quotes, which Ruff's formatter (`make lint`)
+    holds by its default quote style. An assert carries no message.
+-   A test takes every `.env` item from `.env.example`.
+
 ## The checks CI runs
 
 Every push runs, on GitHub, the workflow in `.github/workflows/ci.yaml`: it installs uv,
@@ -103,68 +118,56 @@ describes.
 
 ## Code style
 
--   The project follows [Google's style guides] for each language, except where this
-    part says otherwise. Markdown prose is filled to 88 characters, Python as below. The
-    root documents, `docs/plan.md`, `docs/dependencies.md` and
-    `docs/decisions/regressors.md` follow the Markdown rule; the other decision files,
-    `docs/team.md` and `references/` keep their long lines.
--   Links between repository files are relative to the file that holds them, such as
-    `docs/requirements.md#how-requirements-are-checked` from a root file and
-    `../README.md` from `docs/`. They then work on GitHub and in any editor, whichever
-    folder is opened. This departs from Google's Markdown guide.
+Every file follows [Google's style guides] for its language. Markdown lines
+have at most 80 columns, as Google's Markdown guide says; Python lines have at
+most 88, Ruff's default, which departs from Google's 80. This part holds only
+the project's departures from the guides and its additions to them.
 
-`make lint` enforces some of these rules. Where a tool enforces a rule, this part names
-the tool's settings instead of repeating the rule: Ruff's rules and the Google docstring
-convention are set under `[tool.ruff.lint]` and `[tool.ruff.lint.pydocstyle]` in
-`pyproject.toml`, and Pyright's scope under `[tool.pyright]`. Ruff formats with its
-default line length, 88 columns, and its import rule orders the imports. Lychee checks
-the links and heading anchors between and within the Markdown files. Nothing else checks
-the other rules automatically: the author checks them, and a reviewer does too when
-there is one.
-
-[Google's style guides]: https://google.github.io/styleguide/
-
-### Style of the code
-
--   Every function and method has a docstring whose first line is a summary ending in a
-    full stop; a longer docstring follows it in the Google style.
--   A comment starts with a capital letter, or with an identifier, and ends with a full
-    stop, or with a colon where it introduces the lines that follow. A comment explains
-    only the code it sits on and appears only where the code does not speak for itself.
+-   Links between repository files are relative to the file that holds them,
+    such as `docs/requirements.md#how-requirements-are-checked` from a root file
+    and `../README.md` from `docs/`. A link that starts with `/` breaks in VS
+    Code's multi-root workspace; a relative link works on GitHub and in any
+    editor, whichever folder is opened. This departs from Google's Markdown
+    guide.
+-   Python imports are either a module, such as `import pandas as pd`, or the
+    classes and functions by name, such as
+    `from sqlalchemy import Engine, text`. Both are allowed. Importing names
+    departs from Google's Python guide, which imports only packages and
+    modules.
 -   A blank line comes before every `return` that follows other statements.
 -   Functions of one kind share one shape. For example, `train_models` and
-    `predict_changes` in `src/forecasting/commands.py` both go through the securities
-    with one helper. A function returns its value directly when that fits in 88 columns,
-    and otherwise through a short named variable; it never returns a call chain split
-    over several lines. A constructor call or a comprehension may span lines.
+    `predict_changes` in `src/forecasting/commands.py` both go through the
+    securities with one helper. A function returns its value directly when that
+    fits on one line, and otherwise through a short named variable; it never
+    returns a call chain split over several lines. A constructor call or a
+    comprehension may span lines.
 -   Path constants are at the top of the file.
--   Names say their intent in plain words, with the word that the [terms] use for the
-    thing.
--   A number in code is a named constant at the top of its file, except a pipeline's
-    fixed start date. A closed set of answers is an enum.
--   A setting is checked against its range when a command or service starts; the ranges
-    are constants in `src/forecasting/config.py`, and those of `REPLAY_INTERVAL_SECONDS`
-    are in `airflow/dags/replay.py`.
--   FastAPI dependencies and Pydantic field rules go in `Annotated[...]`. `Field(...)`
-    is used on its own only for `default`, `default_factory` and `alias`.
--   Prose in docstrings and comments is wrapped at 88 characters.
--   In `compose.yaml` a list is written in brackets when it fits on one line, and with
-    dashes otherwise.
--   Made-up prices in `db/queries/` use symbols of the form `<TICKER>.SAMPLE`, so they
-    never mix with real prices.
+-   Names use the word that the [terms] give for the thing.
+-   A number in code is a named constant at the top of its file, except a
+    pipeline's fixed start date. The numbers 0, 1 and -1 as steps, indices and
+    zero checks, and a test's own input and expected values, stay written out.
+    A closed set of answers is an enum.
+-   FastAPI dependencies and Pydantic field rules go in `Annotated[...]`.
+    `Field(...)` is used on its own only for `default`, `default_factory` and
+    `alias`.
+-   An SQL statement in Python is fixed text with bound parameters, or
+    SQLAlchemy or `psycopg.sql` composes it; it is never built by string
+    formatting. Ruff's rule S608 flags the usual string-built forms of `SELECT`,
+    `INSERT`, `UPDATE` and `DELETE`, not every form. The author checks every
+    statement, above all those S608 never detects, such as `CREATE ROLE` and
+    `DROP DATABASE`.
+-   In `compose.yaml` a list is written in brackets when it fits on one line,
+    and with dashes otherwise.
 
+`make lint` enforces some of these rules. Where a tool enforces a rule, this
+part names the tool's settings instead of repeating the rule: Ruff's rules and
+the Google docstring convention are set under `[tool.ruff.lint]` and
+`[tool.ruff.lint.pydocstyle]` in `pyproject.toml`, and Pyright's scope under
+`[tool.pyright]`. Ruff formats Python at its default of 88 columns, and its
+import rule orders the imports. Lychee checks the links and heading anchors
+between and within the Markdown files. Nothing else checks the other rules
+automatically: the author checks them, and a reviewer does too when there is
+one.
+
+[Google's style guides]: https://google.github.io/styleguide/
 [terms]: ARCHITECTURE.md#terms
-
-### Style of the tests
-
--   An HTTP test asserts the status first, then the body.
--   A test never compares the text of a message.
--   A test never replaces the project's own functions with stand-ins; it replaces only
-    what lies outside the project (the data source) and the API's shared parts in
-    `forecasting.api.dependencies`, which exist to be replaced.
--   An acceptance test checks one sentence of a requirement through the public interface
-    and cites the requirement's id at the start of its docstring. A unit test checks a
-    promise of a function's docstring and cites no requirement.
--   Test strings are in double quotes, which Ruff's formatter (`make lint`) holds by its
-    default quote style. An assert carries no message.
--   A test takes every `.env` item from `.env.example`.

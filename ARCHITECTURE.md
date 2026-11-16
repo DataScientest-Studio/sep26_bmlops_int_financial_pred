@@ -910,8 +910,10 @@ baselines is computed, not that the model wins. How to run the tests is in
 -   Every forecast is stored with its inputs, or it fails (REQ-SVC-003).
 -   A symbol that is not a configured security is refused by the API; indices are never
     forecast (REQ-SVC-001, REQ-SVC-002, REQ-SVC-006, REQ-SVC-007).
--   Configured values are read and range-checked when a command or service starts
-    (REQ-AUT-007).
+-   Configured values are read and range-checked when a command or service
+    starts (REQ-AUT-007). The ranges are constants in
+    `src/forecasting/config.py`; those of `REPLAY_INTERVAL_SECONDS` are in
+    `airflow/dags/replay.py`.
 -   A pipeline calls services only; what Airflow receives is in
     [SECURITY.md][trust-boundaries].
 -   Every service is published on the host at 127.0.0.1 only, or not at all ([What the
