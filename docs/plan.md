@@ -205,12 +205,12 @@ promoted if it is better — visible in the app, MLflow and Grafana.
 | Oct 13–22 (coach meeting) | Phase 1 finished and the first phase 2 piece | open items of the "Phase 1 plan"; the agreed "Phase 2 plan" |
 | Oct 23–29 | Chain runs end to end: one replayed day goes from new quotes through training and promotion to the API serving the new model | items in "Phase 2 plan" |
 | Oct 30–Nov 6 | Closed loop and monitoring | items in "Phase 3 plan" |
-| Nov 7–11 | Feature freeze Nov 11 | tests, README and API docs, check from a fresh clone, demo script |
+| Nov 7–11 | Tests and documents | tests, README and API docs, check from a fresh clone, demo script |
 | Thu Nov 12 | Mock defense call | full demo as at the defense |
-| Nov 13–15 | Polish | fixes from the mock defense, presentation (slides or in the web app) |
-| Mon Nov 16 | Coach meeting: phase 3 check | full demo; the coach's findings become the fix list |
-| Nov 17–22 | Fix and rehearse | fixes from the coach meeting, 1–2 rehearsals with equal speaking time |
-| about Mon Nov 23 | Defense | one week after the coach meeting; the exact day is set by the coach |
+| Nov 13–15 | Build and polish; feature freeze Sun Nov 15 | outcome collection, alerts and the retraining webhook, fixes from the mock defense, presentation (slides or in the web app) |
+| Tue Nov 17 | Coach meeting: phase 3 check | full demo; the coach's findings become the fix list |
+| from Wed Nov 18 | Fix and rehearse | fixes from the coach meeting, 1–2 rehearsals with equal speaking time |
+| to be set by the coach | Defense | the exact day is set by the coach |
 
 ### Contents of the build milestones
 
@@ -527,9 +527,8 @@ in brackets.
 
 -   Split timing: check at which point of a split's own day EODHD applies it when a
     reference security next splits (see [Constraints]).
--   Defense date: one week after the coach meeting of Nov 16, around Mon Nov 23 (coach,
-    Oct 22); the SEP26 sheet also lists a mock defense call on Nov 12. The exact day:
-    (Ask the coach.)
+-   Defense date: after the coach meeting of Tue Nov 17; the SEP26 sheet also lists a
+    mock defense call on Nov 12. The exact day: (Ask the coach.)
 
 [Constraints]: ../ARCHITECTURE.md#constraints
 [Decisions]: #decisions

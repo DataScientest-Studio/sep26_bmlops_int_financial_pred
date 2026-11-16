@@ -28,7 +28,7 @@ Alternatives:
 
 ## Meetings
 
--   Coach: Mon Oct 12 12:00, then around each phase deadline (Oct 22, Nov 16) and the mock defense call (Nov 12). A time that does not suit → tell the coach in Slack.
+-   Coach: Mon Oct 12 12:00, then around each phase deadline (Oct 22, Nov 17) and the mock defense call (Nov 12). A time that does not suit → tell the coach in Slack.
 -   Team: one of the two options below, at a fixed time. Each member says what they did, what comes next, and what blocks them; anything longer goes to a separate call with only the people it concerns.
     -   Daily stand-up, 15 minutes: blockers surface within a day; costs a fixed slot every day.
     -   Twice a week, 30 minutes: fewer interruptions next to the course modules; a blocker can wait up to three days unless raised in Slack.
@@ -45,7 +45,7 @@ A decision made in a call or in Slack is written into [plan.md](plan.md) or [dec
 
 ## Work tracking
 
-GitHub Issues on a project board in the team repo: one issue per task, assigned to one member, one milestone per coach meeting (Oct 12, Oct 22, Nov 12, Nov 16).
+GitHub Issues on a project board in the team repo: one issue per task, assigned to one member, one milestone per coach meeting (Oct 12, Oct 22, Nov 12, Nov 17).
 
 Alternatives:
 
