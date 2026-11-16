@@ -18,6 +18,8 @@ x-project: &project
     MLFLOW_TRACKING_URI: http://mlflow:5000
     # MLflow sends no usage reports to its makers.
     MLFLOW_DISABLE_TELEMETRY: "true"
+    # MLflow prints no links to its runs: they would name its address inside Compose.
+    MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT: "true"
     AWS_ACCESS_KEY_ID: ${OBJECT_STORE_USER:?set in .env}
     AWS_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?set in .env}
   # The team's config folder is read live, never written; a missing datasets folder
