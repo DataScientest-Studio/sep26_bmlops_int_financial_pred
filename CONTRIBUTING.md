@@ -1,28 +1,22 @@
 # Contributing
 
-How to set up the project for development, check your work, and get a change into
-`main`. How the system is built is in [ARCHITECTURE.md]; how to install and run it is in
-[DEPLOYMENT.md].
-
-[ARCHITECTURE.md]: ARCHITECTURE.md
-[DEPLOYMENT.md]: DEPLOYMENT.md
+How to set up the project for development, check your work, and get a change
+into `main`. How the system is built is in [ARCHITECTURE.md](ARCHITECTURE.md);
+how to install and run it is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Development setup
 
-You need [uv], `make`, `git` and, for everything that runs the system, Docker with
-Compose. Install the Python environment with the packages the project locks:
+You need [uv](https://docs.astral.sh/uv/), `make`, `git` and, for everything
+that runs the system, Docker with Compose. Install the Python environment with
+the packages the project locks:
 
 ```bash
 make setup      # runs uv sync --locked and creates .venv
 ```
 
-Create `.env` from `.env.example` as [DEPLOYMENT.md][install] describes. If you add a
-package to `pyproject.toml`, add its row to [docs/dependencies.md] and commit the
-updated `uv.lock`.
-
-[docs/dependencies.md]: docs/dependencies.md
-[install]: DEPLOYMENT.md#install
-[uv]: https://docs.astral.sh/uv/
+Create `.env` from `.env.example` as [DEPLOYMENT.md](DEPLOYMENT.md#install)
+describes. If you add a package to `pyproject.toml`, add its row to
+[docs/dependencies.md](docs/dependencies.md) and commit the updated `uv.lock`.
 
 ## Running the tests
 
@@ -33,26 +27,26 @@ updated `uv.lock`.
 | `make contract` | The contract tests against EODHD |
 | `make lint` | `ruff check`, `ruff format --check`, `pyright` and a link check of every Markdown file; needs Docker |
 
-`make acceptance` starts the database (`make db`) first. The acceptance tests are
-black-box tests of the requirements, and the integration tests run our code against the
-real database. `make contract` uses your own key from `.env` and spends calls of the
-free tier's daily allowance. A check the key cannot support (history that does not reach
-back far enough, too few calls left today, a refused request) is skipped with its
-reason. `make lint` changes no files. Its link check runs lychee, offline, from the
-Docker image that `LYCHEE_IMAGE` in the `Makefile` pins, with the repository mounted
-read-only and with no network. It checks the links and `#heading` anchors of every
-Markdown file that Git knows about, tracked or new but not ignored.
+`make acceptance` starts the database (`make db`) first. The acceptance tests
+are black-box tests of the requirements, and the integration tests run our code
+against the real database. `make contract` uses your own key from `.env` and
+spends calls of the free tier's daily allowance. A check the key cannot support
+(history that does not reach back far enough, too few calls left today, a
+refused request) is skipped with its reason. `make lint` changes no files. Its
+link check runs lychee, offline, from the Docker image that `LYCHEE_IMAGE` in
+the `Makefile` pins, with the repository mounted read-only and with no network.
+It checks the links and `#heading` anchors of every Markdown file that Git knows
+about, tracked or new but not ignored.
 
 Format your code with `uv run ruff format`. The tests take every setting from
 `.env.example`, never from your shell or your `.env`; the contract tests of
-`make contract` are the exception and read the EODHD key from your `.env`. The tests log
-in to the database with `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_PORT` of the
-template, so these three must be the same in your `.env`, because `make db` starts the
-database with them. Each test worker gets its own test database. Tests never use a cloud
-service and never the network, with the same exception, the contract tests. See [Test
-strategy] for how the layers fit together.
-
-[Test strategy]: ARCHITECTURE.md#test-strategy
+`make contract` are the exception and read the EODHD key from your `.env`. The
+tests log in to the database with `POSTGRES_USER`, `POSTGRES_PASSWORD` and
+`POSTGRES_PORT` of the template, so these three must be the same in your `.env`,
+because `make db` starts the database with them. Each test worker gets its own
+test database. Tests never use a cloud service and never the network, with the
+same exception, the contract tests. See [Test
+strategy](ARCHITECTURE.md#test-strategy) for how the layers fit together.
 
 ## Tests
 
@@ -71,57 +65,55 @@ strategy] for how the layers fit together.
 
 ## The checks CI runs
 
-Every push runs, on GitHub, the workflow in `.github/workflows/ci.yaml`: it installs uv,
-then runs `make setup`, `make lint` and `make test`. Run `make lint` and `make test`
-before you push. CI does not run the acceptance and integration tests, which need the
-database; run `make acceptance` before you push.
+Every push runs, on GitHub, the workflow in `.github/workflows/ci.yaml`: it
+installs uv, then runs `make setup`, `make lint` and `make test`. Run
+`make lint` and `make test` before you push. CI does not run the acceptance and
+integration tests, which need the database; run `make acceptance` before you
+push.
 
 ## Editing the requirements
 
-The requirements are in `docs/requirements.sdoc`, written for StrictDoc, a tool that
-keeps requirements in text files and exports them as a document. Edit that file, then
-regenerate the readable version:
+The requirements are in `docs/requirements.sdoc`, written for StrictDoc, a tool
+that keeps requirements in text files and exports them as a document. Edit that
+file, then regenerate the readable version:
 
 ```bash
 make requirements
 ```
 
-Never edit `docs/requirements.md` by hand; the next run overwrites it. Code and tests
-refer to a requirement by its id only.
+Never edit `docs/requirements.md` by hand; the next run overwrites it. Code and
+tests refer to a requirement by its id only.
 
 ## Proposing and reviewing a change
 
--   Work from your own branch. A change reaches `main` through a pull request, which
-    shows the checks of its last push. An approval is not required.
--   Commit under your own name. When you rework a teammate's code, name them in a
-    `Co-authored-by:` trailer of the commit.
--   Write commit messages as Conventional Commits: `type(scope): subject`, with one
-    lowercase scope and a subject in the imperative mood, for example
-    `fix(compose): build the project image once`. Use the types `feat`, `fix`, `docs`,
-    `test`, `refactor`, `build` and `chore`.
+-   Work from your own branch. A change reaches `main` through a pull request,
+    which shows the checks of its last push. An approval is not required.
+-   Commit under your own name. When you rework a teammate's code, name them in
+    a `Co-authored-by:` trailer of the commit.
+-   Write commit messages as Conventional Commits: `type(scope): subject`, with
+    one lowercase scope and a subject in the imperative mood, for example
+    `fix(compose): build the project image once`. Use the types `feat`, `fix`,
+    `docs`, `test`, `refactor`, `build` and `chore`.
 -   Branch protection on `main` blocks force pushes and deleting the branch.
--   Record a decision of the team in [docs/plan.md] or [docs/decisions/], as
-    [docs/team.md] describes.
-
-[docs/decisions/]: docs/decisions/
-[docs/plan.md]: docs/plan.md
-[docs/team.md]: docs/team.md
+-   Record a decision of the team in [docs/plan.md](docs/plan.md) or
+    [docs/decisions/](docs/decisions/), as [docs/team.md](docs/team.md)
+    describes.
 
 ## Reporting an issue
 
-Open an issue in the GitHub issue tracker of this repository. Say what you did, what you
-expected and what happened, and include the reason the command or service showed. Never
-include a key, a password or price data. A security problem is reported as [SECURITY.md]
-describes.
-
-[SECURITY.md]: SECURITY.md#reporting
+Open an issue in the GitHub issue tracker of this repository. Say what you did,
+what you expected and what happened, and include the reason the command or
+service showed. Never include a key, a password or price data. A security
+problem is reported as [SECURITY.md](SECURITY.md#reporting) describes.
 
 ## Code style
 
-Every file follows [Google's style guides] for its language. Markdown lines
-have at most 80 columns, as Google's Markdown guide says; Python lines have at
-most 88, Ruff's default, which departs from Google's 80. This part holds only
-the project's departures from the guides and its additions to them.
+Every file follows
+[Google's style guides](https://google.github.io/styleguide/) for its language.
+Markdown lines have at most 80 columns, as Google's Markdown guide says; Python
+lines have at most 88, Ruff's default, which departs from Google's 80. This
+part holds only the project's departures from the guides and its additions to
+them.
 
 -   Links between repository files are relative to the file that holds them,
     such as `docs/requirements.md#how-requirements-are-checked` from a root file
@@ -142,7 +134,8 @@ the project's departures from the guides and its additions to them.
     returns a call chain split over several lines. A constructor call or a
     comprehension may span lines.
 -   Path constants are at the top of the file.
--   Names use the word that the [terms] give for the thing.
+-   Names use the word that the [terms](ARCHITECTURE.md#terms) give for the
+    thing.
 -   A number in code is a named constant at the top of its file, except a
     pipeline's fixed start date. The numbers 0, 1 and -1 as steps, indices and
     zero checks, and a test's own input and expected values, stay written out.
@@ -168,6 +161,3 @@ import rule orders the imports. Lychee checks the links and heading anchors
 between and within the Markdown files. Nothing else checks the other rules
 automatically: the author checks them, and a reviewer does too when there is
 one.
-
-[Google's style guides]: https://google.github.io/styleguide/
-[terms]: ARCHITECTURE.md#terms

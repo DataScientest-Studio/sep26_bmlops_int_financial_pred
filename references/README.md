@@ -1,6 +1,9 @@
 # Project reference — index
 
-Condensed from the course material. Read the topic file you need; go to the source only for detail not kept here. The course material itself is not in the repository (folder `course-material/`, gitignored); every learner has it from the course.
+Condensed from the course material. Read the topic file you need; go to the
+source only for detail not kept here. The course material itself is not in the
+repository (folder `course-material/`, gitignored); every learner has it from
+the course.
 
 | File | Content |
 |---|---|
@@ -13,9 +16,11 @@ Condensed from the course material. Read the topic file you need; go to the sour
 
 ## Sources and precedence
 
-Coach of the sep26 cohort: `[coach]`. "Coach" in these files refers to `[coach]` unless noted.
+Coach of the sep26 cohort: `[coach]`. "Coach" in these files refers to `[coach]`
+unless noted.
 
-Precedence where sources conflict: coach (forum post, introduction video) > subject PDF > SEP26 sprint sheet > kick-off deck > generic DataScientest docs.
+Precedence where sources conflict: coach (forum post, introduction video) >
+subject PDF > SEP26 sprint sheet > kick-off deck > generic DataScientest docs.
 
 | Source | Path (local, gitignored) | Kind |
 |---|---|---|
@@ -35,16 +40,29 @@ Precedence where sources conflict: coach (forum post, introduction video) > subj
 
 The Google links in the course point to the files under `course-material/`:
 
--   Sprint planning (cohort sheet) → `course-material/SEP26 PP Bootcamp MLOps (EN).xlsx`
--   Project guidelines (slides) → `course-material/Kick-Off Projets MLOPS (EN).pdf`
--   MLOps model canvas (doc) → `course-material/template Machine Learning Canvas (v1.1).pdf`
+-   Sprint planning (cohort sheet) →
+    `course-material/SEP26 PP Bootcamp MLOps (EN).xlsx`
+-   Project guidelines (slides) →
+    `course-material/Kick-Off Projets MLOPS (EN).pdf`
+-   MLOps model canvas (doc) →
+    `course-material/template Machine Learning Canvas (v1.1).pdf`
 -   Report guidelines → `course-material/(EN) Projects_methodology_report.pdf`
--   Defense guidelines → `course-material/Projet_Soutenance_Méthodologie_DS_EN.pdf`
--   Archives of past reports and slides/Streamlit apps: Google Drive folders, linked in the course material
--   Kick-off Zoom recording: link + passcode in the Slack channel (not copied here).
+-   Defense guidelines →
+    `course-material/Projet_Soutenance_Méthodologie_DS_EN.pdf`
+-   Archives of past reports and slides/Streamlit apps: Google Drive folders,
+    linked in the course material
+-   Kick-off Zoom recording: link + passcode in the Slack channel (not copied
+    here).
 
 ## Example / template repos
 
--   Templates by `[template author]` (kick-off deck author): `github.com/[template author username]/mlops_project_template`, `github.com/[template author username]/mlops-boiler-plate`
--   Past learner projects (the coach's previous groups): `DataScientest-Studio/juin23_continu_mlops_pompiers`, `DataScientest-Studio/AVR24CMLOPS_Bird-Image-Recognition` (local clones in `course-material/reference-repos/`), `DataScientest-Studio/dec23_mlops_accidents`
--   Streamlit gallery: `streamlit.io/gallery`; DataScientest Studio: `studio.datascientest.com`
+-   Templates by `[template author]` (kick-off deck author):
+    `github.com/[template author username]/mlops_project_template`,
+    `github.com/[template author username]/mlops-boiler-plate`
+-   Past learner projects (the coach's previous groups):
+    `DataScientest-Studio/juin23_continu_mlops_pompiers`,
+    `DataScientest-Studio/AVR24CMLOPS_Bird-Image-Recognition` (local clones in
+    `course-material/reference-repos/`),
+    `DataScientest-Studio/dec23_mlops_accidents`
+-   Streamlit gallery: `streamlit.io/gallery`; DataScientest Studio:
+    `studio.datascientest.com`
