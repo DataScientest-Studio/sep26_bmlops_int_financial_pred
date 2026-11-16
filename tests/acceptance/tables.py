@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 from mlflow import MlflowClient
 from mlflow.entities import Run
 from mlflow.entities.model_registry import ModelVersion
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, column, literal_column, select, table
 
 from forecasting.config import Settings
 from forecasting.load import load_history
@@ -25,9 +25,22 @@ from tests.fakes import (
 SECURITY = SECURITIES[0]
 
 
-def stored_table(engine: Engine, table: str) -> pd.DataFrame:
-    """Read every stored row of one table straight from it, by symbol and day."""
-    query = text(f"SELECT * FROM {table} ORDER BY symbol, day")
+def stored_table(engine: Engine, name: str) -> pd.DataFrame:
+    """Read every stored row of one table straight from it, by symbol and day.
+
+    Args:
+        engine: The engine of the project database or of the replay database.
+        name: Name of a table with the columns `symbol` and `day`: prices,
+            splits, dividends or predictions.
+
+    Returns:
+        Every row and column, ordered by symbol, then day.
+    """
+    query = (
+        select(literal_column("*"))
+        .select_from(table(name))
+        .order_by(column("symbol"), column("day"))
+    )
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
 

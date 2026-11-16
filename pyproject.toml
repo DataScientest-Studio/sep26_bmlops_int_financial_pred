@@ -61,7 +61,7 @@ markers = [
 include = ["src", "tests", "webapp"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "D"]
+select = ["E", "F", "I", "D", "S608"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

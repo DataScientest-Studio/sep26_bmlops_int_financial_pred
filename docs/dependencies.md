@@ -56,8 +56,12 @@ themselves (numpy, pydantic, starlette …) are not listed.
         the PostgreSQL server over the network. SQLAlchemy uses it underneath
         (`postgresql+psycopg://…` in the connection URL). `binary` installs a
         ready-built version, so no compiler or PostgreSQL client libraries are needed.
-    -   Used for: Every database connection; the test fixtures use it directly to create
-        and drop test databases.
+    -   Used for: Every database connection. SQLAlchemy opens most of them
+        through it; `forecasting.db` opens its own to create and drop databases
+        and to check whether one exists. `forecasting.api.metrics` and the
+        shared test fixtures catch its `OperationalError` for a failed
+        connection, and the acceptance fixture `spaced_password_replay_url`
+        uses it to create and drop a test login.
 -   **exchange-calendars**
     -   What it does: Trading calendars of 71 exchanges: trading days, holidays, early
         closes, time zones.
@@ -123,8 +127,9 @@ themselves (numpy, pydantic, starlette …) are not listed.
         CPU core).
     -   Used for: Faster test runs; each worker gets its own test database.
 -   **ruff**
-    -   What it does: Linter and formatter: finds errors and style problems, formats
-        code (88 characters per line, Google-style docstrings).
+    -   What it does: Linter and formatter: finds errors, style problems
+        (docstrings that break the Google convention among them) and SQL
+        statements built from strings; formats code at 88 characters per line.
     -   Used for: `make lint` (also on every push); `uv run ruff format` formats the
         code.
 -   **pyright**

@@ -5,10 +5,13 @@ from datetime import date, timedelta
 
 import numpy as np
 import pandas as pd
+import psycopg
 import pytest
 from mlflow import MlflowClient
-from sqlalchemy import make_url, text
+from psycopg import sql
+from sqlalchemy import Engine, make_url, text
 
+from forecasting.config import Settings
 from forecasting.datasets import dataset_version
 from forecasting.db import connect, database_exists, drop_database, read_prices
 from forecasting.load import load_history
@@ -33,36 +36,56 @@ from tests.fakes import (
 pytestmark = pytest.mark.acceptance
 
 
-def _stored_rows(engine, symbol: str) -> pd.DataFrame:
+def _stored_rows(engine: Engine, symbol: str) -> pd.DataFrame:
     """Read the stored prices of one symbol straight from the table."""
     query = text("SELECT * FROM prices WHERE symbol = :symbol ORDER BY day")
     with engine.connect() as connection:
         return pd.read_sql(query, connection, params={"symbol": symbol})
 
 
-def _last_row(engine, symbol: str) -> pd.Series:
+def _last_row(engine: Engine, symbol: str) -> pd.Series:
     """Read the stored quote of the latest day of one symbol."""
     return _stored_rows(engine, symbol).iloc[-1]
 
 
 @pytest.fixture
-def spaced_password_replay_url(engine, replay_url, worker_id) -> Iterator[str]:
-    """Replay URL on a login of its own whose password holds a space; dropped after."""
-    role = f"replay_login_{worker_id}"
+def spaced_password_replay_url(
+    engine: Engine, replay_url: str, worker_id: str
+) -> Iterator[str]:
+    """Give the replay URL for a login of its own whose password holds a space.
+
+    Drop the replay database and the login after the test.
+
+    Args:
+        engine: The project database engine, supplied by pytest.
+        replay_url: The replay database URL, supplied by pytest.
+        worker_id: The pytest-xdist worker name, supplied by pytest-xdist.
+
+    Yields:
+        `replay_url` with that login's name and password.
+    """
+    login = f"replay_login_{worker_id}"
     password = "two words"
     with engine.begin() as connection:
-        connection.execute(text(f'DROP ROLE IF EXISTS "{role}"'))
-        create = f"CREATE ROLE \"{role}\" LOGIN CREATEDB PASSWORD '{password}'"
-        connection.execute(text(create))
-    url = make_url(replay_url).set(username=role, password=password)
+        server = connection.connection.driver_connection
+        assert isinstance(server, psycopg.Connection)
+        server.execute(sql.SQL("DROP ROLE IF EXISTS {}").format(sql.Identifier(login)))
+        server.execute(
+            sql.SQL("CREATE ROLE {} LOGIN CREATEDB PASSWORD {}").format(
+                sql.Identifier(login), sql.Literal(password)
+            )
+        )
+    url = make_url(replay_url).set(username=login, password=password)
     spaced_url = url.render_as_string(hide_password=False)
     yield spaced_url
     drop_database(spaced_url)
     with engine.begin() as connection:
-        connection.execute(text(f'DROP ROLE "{role}"'))
+        server = connection.connection.driver_connection
+        assert isinstance(server, psycopg.Connection)
+        server.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(login)))
 
 
-def _training_rows(engine, settings) -> pd.DataFrame:
+def _training_rows(engine: Engine, settings: Settings) -> pd.DataFrame:
     """Load the standard history; read one security's prices as training does."""
     load_history(
         engine,

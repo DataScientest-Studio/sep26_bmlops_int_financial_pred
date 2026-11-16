@@ -22,7 +22,20 @@ from forecasting.db import (
     drop_database,
 )
 
-TABLES = ["prices", "splits", "dividends"]
+TABLES = {
+    "prices": (
+        text("DELETE FROM prices WHERE day >= :start"),
+        text("SELECT * FROM prices WHERE day >= :start AND day <= :until"),
+    ),
+    "splits": (
+        text("DELETE FROM splits WHERE day >= :start"),
+        text("SELECT * FROM splits WHERE day >= :start AND day <= :until"),
+    ),
+    "dividends": (
+        text("DELETE FROM dividends WHERE day >= :start"),
+        text("SELECT * FROM dividends WHERE day >= :start AND day <= :until"),
+    ),
+}
 STORED_DAYS = text("SELECT min(day), max(day) FROM prices")
 NEXT_DAY = text("SELECT min(day) FROM prices WHERE day > :today")
 # MLflow names of the replay experiment and models start with this, so they stay apart
@@ -89,10 +102,8 @@ def replay_next_day(engine: Engine, replay_url: str, replay_start: date) -> date
 
 def _copy(source: Connection, target: Connection, start: date, until: date) -> date:
     """Replace the target's days from `start` to `until`; return its latest day."""
-    for table in TABLES:
-        delete = text(f"DELETE FROM {table} WHERE day >= :start")
+    for table, (delete, query) in TABLES.items():
         target.execute(delete, {"start": start})
-        query = text(f"SELECT * FROM {table} WHERE day >= :start AND day <= :until")
         rows = pd.read_sql(query, source, params={"start": start, "until": until})
         rows.to_sql(table, target, if_exists="append", index=False)
     _, latest = target.execute(STORED_DAYS).one()
