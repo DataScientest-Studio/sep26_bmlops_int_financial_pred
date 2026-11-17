@@ -128,7 +128,11 @@ try:
             closes = closes.merge(past, on="day", how="left")
             lines.append("Forecast close")
         prices = closes.melt("day", lines, "Line", "Price").dropna()
-        st.vega_lite_chart(prices, CLOSES_CHART)
+        # The description names the security, so the chart is drawn anew for each
+        # security; Streamlit keeps a chart whose spec does not change.
+        st.vega_lite_chart(
+            prices, {**CLOSES_CHART, "description": f"Closes of {symbol}"}
+        )
         # Only days of the chart with a forecast; the API returns the latest forecast
         # days, which may reach back beyond the chart.
         if past_rows:
