@@ -54,6 +54,8 @@ project image, the web app from an image of its own, and the pipelines in
 Airflow's image. In "When it is down", "down" means that the component does not
 answer.
 
+Heading form: Component (tool, `compose service`).
+
 -   **PostgreSQL (`db`)**
     -   What it does: Holds the project's prices, splits, dividends, load times
         and forecasts. The same server holds the private databases of MLflow and
@@ -186,8 +188,9 @@ answer.
         place
     -   Depends on: The API
     -   When it is down: Nothing else is affected
--   **Docker Compose and the project image (`Dockerfile`, uv)**
-    -   What it does: Start every service and give the code its locked packages
+-   **Docker Compose and the project image (uv)**
+    -   What it does: Start every service and give the code its locked
+        packages; the `Dockerfile` builds the project image
     -   Why it was chosen: One command starts the system, and one lock file
         fixes every package version (REQ-AUT-003, REQ-AUT-006)
     -   Depends on: Docker Engine
@@ -778,10 +781,16 @@ change gives a new one.
 
 DVC keeps a full copy of each distinct version under its id in
 `datasets/.dvc/cache` and in the object store, so a dataset can be brought back
-by its id. The copies stay on the member's machine and are never committed.
-DVC's own clean-up is never run, because without Git it would remove them. Only
-`make reset`, which deletes everything stored, removes the copies. The version
-is a record: training reads from the database, never from these copies.
+by its id. The id is the training run's parameter `dataset_version` in MLflow
+(`outs[0].md5` in `forecasting.datasets.dataset_version`). DVC files a copy as
+`files/md5/<first two characters of the id>/<the other characters>` in the local
+cache and in the bucket `datasets`, so the copy of a run's dataset is
+`datasets/.dvc/cache/files/md5/<id[:2]>/<id[2:]>`: a CSV file without a file
+name, of the security in the run's parameter `symbol`. The copies stay on the
+member's machine and are never committed. DVC's own clean-up is never run,
+because without Git it would remove them. Only `make reset`, which deletes
+everything stored, removes the copies. The version is a record: training reads
+from the database, never from these copies.
 
 ### Object store
 
@@ -1009,8 +1018,6 @@ each push to GitHub run is in [CONTRIBUTING.md].
     Docker access or the EODHD key; calling services needs none of them.
 -   **The web app reading the database or MLflow directly**: the API's rules
     would be written twice.
--   **One drift test per model input**: the five inputs are the same daily
-    change shifted by a day, so five tests act as one.
 -   **Evidently's default test choice**: for a long reference it finds drift in
     nearly every comparison.
 -   **Comparing the new production model's forecasts with the old one's** for
