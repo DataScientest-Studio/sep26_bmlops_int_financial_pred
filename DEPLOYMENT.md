@@ -127,6 +127,9 @@ target stops only the services named here; what is not named keeps running.
 | `make airflow` | Airflow, with the database, the data service and the API | `make airflow-stop` | Airflow and the data service; the database and the API keep running |
 | `make monitoring` | Prometheus and Grafana, with the API | `make monitoring-stop` | Prometheus and Grafana; the API keeps running |
 
+`make stop` stops every service at once and keeps all data; only `make reset`
+deletes the data.
+
 Where the pages are, all on this machine only: they are at
 `http://localhost:<port>` with the ports `API_PORT` (the API, with its
 documentation at `/docs`), `WEBAPP_PORT`, `MLFLOW_PORT`, `AIRFLOW_PORT` and

@@ -95,5 +95,6 @@ runs.
 | [docs/plan.md](docs/plan.md) | Decisions, decision proposals, roadmap, phase plans, open questions |
 | [docs/requirements.md](docs/requirements.md) | Objectives, key metrics and requirements |
 | [docs/team.md](docs/team.md) | Team setup as first proposed: areas, meetings, communication, work tracking |
+| [docs/demo.md](docs/demo.md) | The live demo: preparation, steps and what to do when something goes wrong |
 | [docs/dependencies.md](docs/dependencies.md) | Every Python package and what it does |
 | [docs/decisions/](docs/decisions/) | One file per team decision: options and reasons |

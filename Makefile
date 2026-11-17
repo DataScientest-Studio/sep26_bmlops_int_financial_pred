@@ -6,7 +6,7 @@
         webapp webapp-stop \
         mlflow mlflow-stop \
         airflow airflow-stop \
-        monitoring monitoring-stop
+        monitoring monitoring-stop stop
 
 # Python finds the project's packages in .venv only; a PYTHONPATH set in the shell
 # (for example by ROS) would put foreign packages and pytest plugins first.
@@ -181,3 +181,7 @@ monitoring:
 # Stops Prometheus and Grafana; the API keeps running.
 monitoring-stop:
 	docker compose stop $(MONITORING_SERVICES)
+
+# Stops every running service; all data is kept. make reset is the one that deletes it.
+stop:
+	docker compose stop
