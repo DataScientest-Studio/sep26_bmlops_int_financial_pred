@@ -12,7 +12,8 @@ these pull in themselves (numpy, pydantic, starlette …) are not listed.
         interactive documentation at `/docs`.
     -   Used for: The API (`forecasting.api`): `/health`, `/training`,
         `/predict`, `/prediction-drift-check`, `/securities`,
-        `/securities/{symbol}/history`, `/securities/{symbol}/model`,
+        `/securities/{symbol}/history`, `/securities/{symbol}/forecasts`,
+        `/securities/{symbol}/model`,
         `/metrics`; the data service (`forecasting.data_service`): `/health`,
         `/load`, `/replay`.
 -   **uvicorn**

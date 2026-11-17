@@ -133,6 +133,27 @@ class CloseResponse(BaseModel):
     close: float
 
 
+class PastForecastResponse(BaseModel):
+    """The scheduled forecast of one trading day next to what happened that day.
+
+    Closes are corrected for splits.
+
+    @relation(REQ-SVC-008, scope=class)
+    """
+
+    day: date
+    forecast_change: Annotated[
+        float, Field(description="Forecast relative close-to-close change.")
+    ]
+    forecast_close: Annotated[
+        float, Field(description="Close the forecast leads to from the previous close.")
+    ]
+    actual_change: Annotated[
+        float, Field(description="Actual relative close-to-close change.")
+    ]
+    actual_close: float
+
+
 class ScoresResponse(BaseModel):
     """Scores of one forecaster on the evaluation days.
 

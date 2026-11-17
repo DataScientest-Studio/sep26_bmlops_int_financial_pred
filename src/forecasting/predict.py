@@ -283,6 +283,59 @@ def recent_closes(
     return corrected[["day", "close"]].tail(days)
 
 
+def past_forecasts(
+    engine: Engine, settings: Settings, symbol: str, days: int
+) -> pd.DataFrame:
+    """Return the latest scheduled forecasts of a security next to what happened.
+
+    Only trading days with a stored close and a stored close before it are returned.
+    Each forecast is the latest scheduled one for its day; closes are corrected for
+    splits, so a split shows no false change.
+
+    @relation(REQ-DAT-003, scope=function)
+    @relation(REQ-SVC-008, scope=function)
+
+    Args:
+        engine: Engine of the project database; while the replay database exists,
+            the closes and forecasts are read from that instead.
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+        days: How many of the latest such trading days to return.
+
+    Returns:
+        One row per trading day, oldest first, with the columns `day`,
+        `forecast_change`, `forecast_close` (the previous close times one plus the
+        forecast change), `actual_change` and `actual_close`; changes are fractions
+        of the previous close.
+    """
+    with history_database(engine, settings) as (database, _):
+        prices = read_prices(database, symbol)
+        splits = read_splits(database, symbol)
+        scheduled = read_scheduled_forecasts(database, symbol)
+    corrected = correct_for_splits(prices, splits)
+    outcomes = pd.DataFrame(
+        {
+            "day": corrected["day"],
+            "actual_change": build_features(corrected)["change_1"],
+            "actual_close": corrected["close"],
+            "previous_close": corrected["close"].shift(1),
+        }
+    )
+    # An inner join keeps the days with a forecast, in the oldest-first order of the
+    # closes; the first stored day has no change.
+    forecasts = outcomes.merge(
+        scheduled[["day", "change"]].rename(columns={"change": "forecast_change"}),
+        on="day",
+    ).dropna()
+    forecasts["forecast_close"] = forecasts["previous_close"] * (
+        1 + forecasts["forecast_change"]
+    )
+
+    return forecasts[
+        ["day", "forecast_change", "forecast_close", "actual_change", "actual_close"]
+    ].tail(days)
+
+
 def production_results(
     engine: Engine, settings: Settings, symbol: str
 ) -> ProductionResults:

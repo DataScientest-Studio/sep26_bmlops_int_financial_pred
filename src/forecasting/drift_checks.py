@@ -252,8 +252,9 @@ def check_prediction_drift(
         model: The security's production model.
         prices: The security's prices with a final close, oldest first, corrected for
             splits.
-        scheduled_forecasts: Day and inputs of the latest scheduled forecast of each
-            day, oldest first, as from `forecasting.db.read_scheduled_forecasts`.
+        scheduled_forecasts: Day, change and inputs of the latest scheduled forecast
+            of each day, oldest first, as from
+            `forecasting.db.read_scheduled_forecasts`.
         replaying: Whether the replay database exists; replay checks are recorded in
             their own experiment.
 

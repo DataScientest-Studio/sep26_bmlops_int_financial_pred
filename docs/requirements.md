@@ -318,6 +318,20 @@ also returns the change that the mean-change baseline forecasts. A symbol that
 is not a configured security, or a configured security without a production
 model, is refused.
 
+### Past forecasts endpoint
+
+**UID**: REQ-SVC-008 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Test
+
+**Statement**: The API returns, for a configured security, its latest stored trading days that
+have a scheduled forecast, oldest first: as many days as the caller asks for, all
+of them where fewer are stored. For each day it returns the change of the latest
+scheduled forecast for that day, the close that change leads to from the
+previous stored close, and the day's actual change and close. A symbol that is
+not a configured security is refused.
+
 ## Automation
 
 ### Scheduled training pipeline
@@ -532,6 +546,19 @@ investment advice.
 
 **Statement**: The web app shows the MAE, skill against persistence and
 directional accuracy of the production model next to those of both baselines.
+
+### Forecasts against outcomes
+
+**UID**: REQ-APP-004 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Inspection
+
+**Statement**: On the chart of a security's closes, the web app also shows, for each day of the
+chart with a scheduled forecast, the close that forecast leads to. Below it, a
+chart shows for each such day the error of the model's forecast and the error of
+the persistence baseline, each the forecast change minus the actual change, in
+percentage points.
 
 ## Course constraints
 

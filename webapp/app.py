@@ -1,6 +1,6 @@
 """Web app: a security's recent closes, next-trading-day forecasts and model results.
 
-@relation(REQ-APP-001, REQ-APP-002, REQ-APP-003, scope=file)
+@relation(REQ-APP-001, REQ-APP-002, REQ-APP-003, REQ-APP-004, scope=file)
 """
 
 import os
@@ -17,6 +17,21 @@ HISTORY_DAYS = 60
 # Seconds to wait for an answer; a forecast first loads the model from MLflow.
 TIMEOUT_SECONDS = 30
 NOTICE = "These forecasts are not investment advice."
+# Streamlit's line chart always shows the zero of the y-axis; this one fits the axis to
+# the closes.
+CLOSES_CHART = {
+    "mark": {"type": "line", "point": True},
+    "encoding": {
+        "x": {"field": "day", "type": "temporal", "title": None},
+        "y": {
+            "field": "Price",
+            "type": "quantitative",
+            "scale": {"zero": False},
+        },
+        "color": {"field": "Line", "type": "nominal", "title": None},
+    },
+}
+PERCENT = 100
 
 
 class _Refused(Exception):
@@ -73,7 +88,20 @@ def _securities() -> list[str]:
 def _forecast(
     symbol: str, latest: dict[str, Any], results: dict[str, Any]
 ) -> dict[str, Any]:
-    """Return the production model's forecast for the security's next trading day."""
+    """Return the production model's forecast for the security's next trading day.
+
+    Args:
+        symbol: Ticker of the security to forecast.
+        latest: The security's latest close, as the history route returns it. It is
+            only part of the cache key: a new or final close asks for a new forecast.
+        results: The production model's results, as the model route returns them. It
+            is only part of the cache key: a newly promoted model asks for a new
+            forecast.
+
+    Returns:
+        The API's forecast for the security's next trading day.
+    """
+    del latest, results
     url = f"{API_URL}/predict"
     response = httpx2.post(url, json={"symbol": symbol}, timeout=TIMEOUT_SECONDS)
 
@@ -88,9 +116,34 @@ try:
     rows = _get(f"/securities/{symbol}/history", days=HISTORY_DAYS)
     # Without stored prices there is no chart; the model results' refusal says why.
     if rows:
-        closes = pd.DataFrame(rows)
+        closes = pd.DataFrame(rows).rename(columns={"close": "Close"})
         closes["day"] = pd.to_datetime(closes["day"])
-        st.line_chart(closes, x="day", y="close")
+        past_rows = _get(f"/securities/{symbol}/forecasts", days=HISTORY_DAYS)
+        lines = ["Close"]
+        if past_rows:
+            past = pd.DataFrame(past_rows).rename(
+                columns={"forecast_close": "Forecast close"}
+            )
+            past["day"] = pd.to_datetime(past["day"])
+            closes = closes.merge(past, on="day", how="left")
+            lines.append("Forecast close")
+        prices = closes.melt("day", lines, "Line", "Price").dropna()
+        st.vega_lite_chart(prices, CLOSES_CHART)
+        # Only days of the chart with a forecast; the API returns the latest forecast
+        # days, which may reach back beyond the chart.
+        if past_rows:
+            compared = closes.dropna(subset="Forecast close")
+            st.subheader("Forecast errors")
+            st.caption("Forecast change minus actual change, in percentage points")
+            errors = pd.DataFrame(
+                {
+                    "day": compared["day"],
+                    "Model": (compared["forecast_change"] - compared["actual_change"])
+                    * PERCENT,
+                    "Persistence": -compared["actual_change"] * PERCENT,
+                }
+            )
+            st.line_chart(errors, x="day", y=["Model", "Persistence"])
     results = _get(f"/securities/{symbol}/model")
     predicted = _forecast(symbol, rows[-1], results)
 except _Refused as refusal:

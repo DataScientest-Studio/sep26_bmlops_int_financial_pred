@@ -10,6 +10,7 @@ from forecasting.api.schemas import (
     ForecastRequest,
     ForecastResponse,
     ModelResponse,
+    PastForecastResponse,
     PredictionDriftCheckResponse,
     ScoresResponse,
     SecurityRequest,
@@ -20,6 +21,7 @@ from forecasting.config import Settings
 from forecasting.predict import (
     NoProductionModel,
     check_forecasts_for_drift,
+    past_forecasts,
     predict,
     production_results,
     recent_closes,
@@ -27,8 +29,8 @@ from forecasting.predict import (
 from forecasting.train import decide_training, train
 
 router = APIRouter()
-# Most trading days of closes one history request may ask for, about four years; keeps
-# one answer small.
+# Most trading days one history or past forecasts request may ask for, about four
+# years; keeps one answer small.
 MOST_HISTORY_DAYS = 1000
 
 
@@ -168,6 +170,27 @@ def history_endpoint(
     return [
         CloseResponse(day=day, close=close)
         for day, close in zip(closes["day"], closes["close"])
+    ]
+
+
+@router.get("/securities/{symbol}/forecasts", response_model=list[PastForecastResponse])
+def forecasts_endpoint(
+    symbol: str,
+    days: Annotated[int, Query(ge=1, le=MOST_HISTORY_DAYS)],
+    engine: EngineDep,
+    settings: SettingsDep,
+) -> list[PastForecastResponse]:
+    """Return the latest scheduled forecasts of the security next to what happened.
+
+    A symbol that is not a configured security gets 404.
+
+    @relation(REQ-SVC-008, scope=function)
+    """
+    _refuse_unknown(symbol, settings)
+    forecasts = past_forecasts(engine, settings, symbol, days)
+
+    return [
+        PastForecastResponse.model_validate(row) for row in forecasts.to_dict("records")
     ]
 
 

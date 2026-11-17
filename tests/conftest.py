@@ -97,6 +97,7 @@ def store_forecast(engine: Engine) -> Callable[..., None]:
         requested_at: str,
         scheduled: bool,
         changes: Sequence[float],
+        change: float = 0.99,
     ) -> None:
         """Insert a forecast of `day` requested at `requested_at`, both ISO format."""
         with engine.begin() as connection:
@@ -105,13 +106,14 @@ def store_forecast(engine: Engine) -> Callable[..., None]:
                     "INSERT INTO predictions (symbol, day, change, model_version, "
                     "start_close, start_fetched_at, change_1, change_2, change_3, "
                     "change_4, change_5, requested_at, scheduled) VALUES "
-                    "(:symbol, :day, 0.99, 'v1', 100, :fetched_at, :change_1, "
+                    "(:symbol, :day, :change, 'v1', 100, :fetched_at, :change_1, "
                     ":change_2, :change_3, :change_4, :change_5, :requested_at, "
                     ":scheduled)"
                 ),
                 {
                     "symbol": symbol,
                     "day": date.fromisoformat(day),
+                    "change": change,
                     "fetched_at": FETCHED_AT,
                     "change_1": changes[0],
                     "change_2": changes[1],

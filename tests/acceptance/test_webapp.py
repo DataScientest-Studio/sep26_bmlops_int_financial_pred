@@ -75,7 +75,8 @@ class FakeApi:
         change: float,
         mean_change_forecast: float | None,
     ) -> None:
-        """Answer history, model results and prediction of a security with a model."""
+        """Answer history, model results, prediction and no past forecasts."""
+        self.routes[("GET", f"/securities/{symbol}/forecasts", None)] = (200, [])
         self.routes[("GET", f"/securities/{symbol}/history", None)] = (200, HISTORY)
         self.routes[("GET", f"/securities/{symbol}/model", None)] = (
             200,

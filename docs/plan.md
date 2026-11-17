@@ -28,7 +28,7 @@ follow the table.
 | Better model | a new model replaces a security's production model only if its MAE is lower | Built | Nov 5, 2026 9) | REQ-MOD-005, [Better model](../ARCHITECTURE.md#better-model) |
 | Package and login | Python package `forecasting` | Built | Oct 12, 2026 1) | — |
 | Model serving | FastAPI; BentoML is not used | Coach feedback | Oct 15, 2026 2) | — |
-| Web app | Streamlit | Decided (Tobias) | Nov 7, 2026 10) | REQ-APP-001–003 |
+| Web app | Streamlit | Decided (Tobias) | Nov 7, 2026 10) | REQ-APP-001–004 |
 | Roadmap | milestones and phase plans as written in this plan | Decided (Tobias) | Oct 19, 2026 3) | [Roadmap](#roadmap) |
 | Reference securities | six stocks and two market indices, as configured in `config/securities.toml` | Decided (Tobias) | Oct 19, 2026 3) | [Reference securities](../ARCHITECTURE.md#reference-securities) |
 | Objectives and key metrics | as drafted in `docs/requirements.sdoc` | Decided (Tobias) | Oct 19, 2026 3) | [Objectives](requirements.md#objectives), [Key metrics](requirements.md#key-metrics) |
@@ -543,7 +543,7 @@ Depends on: in brackets.
     -   [ ] an alert configured to start training calls a webhook that starts
         the training pipeline (1; REQ-MON-005)
 -   [x] **7 Web app** (1; REQ-SVC-001, REQ-SVC-005, REQ-SVC-006, REQ-SVC-007,
-    REQ-APP-001, REQ-APP-002, REQ-APP-003)
+    REQ-SVC-008, REQ-APP-001, REQ-APP-002, REQ-APP-003, REQ-APP-004)
     -   [x] the API lists the configured securities, returns a security's recent
         closes and its production model's results next to the baselines, and
         refuses a forecast for a security without a production model
@@ -551,10 +551,13 @@ Depends on: in brackets.
     -   [x] the web app shows the forecast view, the notice "not investment
         advice" on every page and the model results next to the baselines
         (REQ-APP-001, REQ-APP-002, REQ-APP-003)
+    -   [x] the API returns a security's past forecasts next to the outcomes, and
+        the web app charts the forecast close and the forecast errors
+        (REQ-SVC-008, REQ-APP-004)
 -   [ ] **8 Acceptance tests of phase 3**: written before the code of each item,
     for REQ-MOD-006, REQ-SVC-001, REQ-SVC-003, REQ-SVC-005, REQ-SVC-006,
-    REQ-SVC-007, REQ-AUT-002, REQ-MON-001, REQ-MON-002, REQ-MON-005, REQ-APP-001
-    and REQ-APP-003
+    REQ-SVC-007, REQ-SVC-008, REQ-AUT-002, REQ-MON-001, REQ-MON-002,
+    REQ-MON-005, REQ-APP-001 and REQ-APP-003
 
 ## Open questions
 

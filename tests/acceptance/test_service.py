@@ -11,11 +11,12 @@ from forecasting.config import Security, Settings
 from forecasting.load import load_history
 from forecasting.trading_calendar import next_trading_day, session_close
 from forecasting.train import EXPERIMENT_NAME, PRODUCTION_ALIAS
-from tests.acceptance.tables import run_of, stored_table
+from tests.acceptance.tables import run_of, store, stored_table
 from tests.fakes import (
     INDICES,
     SECURITIES,
     FakeSource,
+    history_from_changes,
     price_history,
     standard_source,
 )
@@ -346,3 +347,36 @@ def test_model_results_after_training_are_those_the_training_run_recorded(
     assert body["persistence"]["mae"] == pytest.approx(trained["persistence_mae"])
     assert body["mean_change"]["mae"] == pytest.approx(trained["mean_change_mae"])
     assert body["mean_change_forecast"] == run.data.metrics["mean_change_forecast"]
+
+
+def test_past_forecasts_give_forecast_and_actual_per_day_oldest_first_as_many_as_asked(
+    client, engine, settings, store_forecast
+):
+    """REQ-SVC-008: per day the forecast, its close and the actual change and close."""
+    history = history_from_changes("XNYS", "2025-12-23", "2025-12-29", (0.1, -0.1, 0.2))
+    store(engine, settings, history)
+    inputs = [0.0] * 5
+    store_forecast("TEST.US", "2025-12-29", "2025-12-26T22:00:00", True, inputs, 0.05)
+    store_forecast("TEST.US", "2025-12-24", "2025-12-23T22:00:00", True, inputs, 0.03)
+    store_forecast("TEST.US", "2025-12-26", "2025-12-24T22:00:00", True, inputs, -0.02)
+    response = client.get("/securities/TEST.US/forecasts?days=2")
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "day": "2025-12-26",
+            "forecast_change": -0.02,
+            "forecast_close": pytest.approx(107.8),
+            "actual_change": pytest.approx(-0.1),
+            "actual_close": pytest.approx(99.0),
+        },
+        {
+            "day": "2025-12-29",
+            "forecast_change": 0.05,
+            "forecast_close": pytest.approx(103.95),
+            "actual_change": pytest.approx(0.2),
+            "actual_close": pytest.approx(118.8),
+        },
+    ]
+    response = client.get("/securities/TEST.US/forecasts?days=10")
+    assert response.status_code == 200
+    assert len(response.json()) == 3

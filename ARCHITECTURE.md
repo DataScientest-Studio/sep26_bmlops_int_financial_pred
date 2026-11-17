@@ -358,8 +358,9 @@ the system call.
     REQ-MOD-006).
 -   **`predict.py`**: forecasts and reads results. `predict` makes and stores a
     forecast, `check_forecasts_for_drift` runs the prediction drift check,
-    `recent_closes` returns the latest closes and `production_results` returns
-    the production model's scores.
+    `recent_closes` returns the latest closes, `past_forecasts` returns the
+    latest scheduled forecasts next to the outcomes and `production_results`
+    returns the production model's scores.
 -   **`drift_checks.py`**: tests for drift and records each check as its own
     MLflow run (`run_drift_test`, `check_feature_drift`,
     `check_prediction_drift`, `find_latest_prediction_drift_check`).
@@ -381,8 +382,8 @@ the system call.
 
 -   **`app.py`**: builds the application and reads the settings at start.
 -   **`routes.py`**: defines the routes `/health`, `/predict`, `/training`,
-    `/prediction-drift-check`, `/securities`, `/securities/{symbol}/history` and
-    `/securities/{symbol}/model`.
+    `/prediction-drift-check`, `/securities`, `/securities/{symbol}/history`,
+    `/securities/{symbol}/forecasts` and `/securities/{symbol}/model`.
 -   **`schemas.py`**: defines the request and response bodies of the routes.
 -   **`dependencies.py`**: gives the routes the settings and the engine they
     share, which tests replace.
@@ -833,14 +834,19 @@ The prediction drift check forecasts again from the stored inputs.
 
 ### Web app
 
-The web app (`webapp/app.py`, REQ-APP-001 to REQ-APP-003) is the page for
+The web app (`webapp/app.py`, REQ-APP-001 to REQ-APP-004) is the page for
 looking at the forecasts. It reads everything through the API and touches
 neither the database nor MLflow. Every page opens with the notice that the
 forecasts are not investment advice. After the user chooses one of the
 securities the API lists (REQ-SVC-005), the page shows:
 
 -   a chart of the security's closes over its latest 60 trading days
-    (`/securities/{symbol}/history`, REQ-SVC-006);
+    (`/securities/{symbol}/history`, REQ-SVC-006), with a second line for the
+    close that the latest scheduled forecast of each day leads to and, below
+    it, a chart of the error of the model's and of persistence's forecast for
+    those days, each the forecast change minus the actual change in percentage
+    points (`/securities/{symbol}/forecasts`, REQ-SVC-008, REQ-APP-004). A
+    security without forecasts shows the closes only;
 -   the forecast of the next trading day (`/predict`): the day it is for, the
     close it starts from with the time that close was fetched, and the change
     and the close the model forecasts, with its model version, next to those of
@@ -992,7 +998,8 @@ each push to GitHub run is in [CONTRIBUTING.md].
     succeeds.
 -   Every forecast is stored with its inputs, or it fails (REQ-SVC-003).
 -   A symbol that is not a configured security is refused by the API; indices
-    are never forecast (REQ-SVC-001, REQ-SVC-002, REQ-SVC-006, REQ-SVC-007).
+    are never forecast (REQ-SVC-001, REQ-SVC-002, REQ-SVC-006, REQ-SVC-007,
+    REQ-SVC-008).
 -   Configured values are read and range-checked when a command or service
     starts (REQ-AUT-007). The ranges are constants in
     `src/forecasting/config.py`; those of `REPLAY_INTERVAL_SECONDS` are in
