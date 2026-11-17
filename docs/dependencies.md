@@ -118,7 +118,8 @@ these pull in themselves (numpy, pydantic, starlette …) are not listed.
     -   Used for: The drift checks (`forecasting.drift_checks`): Evidently's
         drift test for one column (the two-sample Kolmogorov-Smirnov test) gives
         each check its p-value and its report; the feature drift check runs
-        before each training of a security that has a recorded training
+        before each training of a security that has a recorded training, unless
+        fewer than 20 daily changes lie before its window
         (`forecasting.train`).
 
 ## Development only (`dev` group)

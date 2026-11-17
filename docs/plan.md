@@ -46,6 +46,7 @@ follow the table.
 | Versioning | every training run records the model, the version of the dataset it trained on and the commit of the code it ran | Coach feedback | Oct 22, 2026 6) | REQ-MOD-004, [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) items 3 and 5 |
 | Drift reports | each drift check is a separate MLflow run | Decided (Tobias) | Nov 2, 2026 7), Nov 9, 2026 11) | REQ-MON-001–002 |
 | Training when needed | a security is trained only when needed | Decided (Tobias) | Nov 9, 2026 11) | REQ-MOD-006, REQ-MON-001–002 |
+| Drift reference | each drift check compares its latest days with the earlier days | Decided (Tobias) | Nov 17, 2026 12) | REQ-MON-001–002, REQ-MON-006 |
 | Daily update schedule | the schedule and the final delay are team configuration in `config/daily_update.toml` | Decided (Tobias) | Nov 4, 2026 8) | [Provisional closes](../ARCHITECTURE.md#provisional-closes) (final delay), [Phase 2 plan](#phase-2-plan--the-chain-runs-end-to-end) (schedule settings) |
 | Settings checks | configured values are checked when the API, the data service or a command starts | Decided (Tobias) | Nov 4, 2026 8) | REQ-AUT-007 |
 
@@ -73,6 +74,8 @@ for splits; the model choice and the better-model rule, as built.
 10\) Decided by Tobias as coordinator, Nov 7, 2026.
 
 11\) Decided by Tobias as coordinator, Nov 9, 2026.
+
+12\) Decided by Tobias as coordinator, Nov 17, 2026.
 
 ### Details of the decisions
 
@@ -134,6 +137,8 @@ here.
     (`config/training.toml`) trading days have been stored since its latest
     training; when drift is found in the forecasts, every configured security is
     trained; `make train` always trains.
+-   **Drift reference**: the feature drift check does not run while fewer than
+    20 daily changes lie before its window.
 -   **Daily update schedule**: read by the pipeline and the API.
 -   **Settings checks**: a missing or out-of-range value stops that start with a
     message naming the setting; `make contract` checks each stock's exchange
@@ -514,15 +519,16 @@ Depends on: in brackets.
         least `retraining_interval_days` trading days have been stored since its
         latest training; the feature drift check compares the daily price
         changes of the latest `drift_window_days` stored trading days with those
-        of all days up to the latest training, and records its report and
-        p-value as its own MLflow run (1; REQ-MOD-006, REQ-MON-001)
+        of all earlier stored trading days, and records its report and p-value
+        as its own MLflow run (1; REQ-MOD-006, REQ-MON-001, REQ-MON-006)
     -   [x] scheduled forecasts and the prediction drift check: after training,
         the training pipeline makes one scheduled forecast per configured
         security; the pipeline `prediction_drift_check` has the production model
         forecast again from the inputs of recent scheduled forecasts, and
-        compares these with its forecasts for the days up to the security's
-        latest training; when drift is found, every configured security is
-        trained (1, 3; REQ-MON-002, REQ-AUT-001)
+        compares these with the production model's forecasts for the stored
+        trading days before the first day of those forecasts; when drift is
+        found, every configured security is trained (1, 3; REQ-MON-002,
+        REQ-AUT-001)
     -   [x] settings: `drift_window_days`,
         `prediction_drift_check_interval_days` and `drift_p_value_threshold` in
         `config/drift_checks.toml`, `retraining_interval_days` in

@@ -30,6 +30,11 @@ The documents use these words in this sense.
     database of its own, as if each day were arriving live.
 -   **Asset**: Airflow's name for a marker that a pipeline announces when its
     task succeeds and that other pipelines wait for.
+-   **Window** and **reference** of a drift check: the window is the latest days
+    a drift check looks at; the reference is the earlier values it compares them
+    with: daily price changes for the feature check, forecasts for the
+    prediction check. The reference has nothing to do with the reference
+    securities or with the market indices loaded as reference series.
 -   **Scheduled forecast**: a forecast that the training pipeline asks for after
     training and marks as scheduled. Only these take part in the prediction
     drift check.
@@ -144,11 +149,10 @@ Heading form: Component (tool, `compose service`).
         and is the default object store of Kubeflow Pipelines. It runs on the
         member's machine, so price data never leaves it
     -   Depends on: Nothing
-    -   When it is down: Training fails: for a security with a recorded
-        training, already when its feature drift check stores its report; for a
-        first training, at the dataset version step. Loading a model for a
-        forecast fails too. Model results, price history and the drift numbers
-        keep working
+    -   When it is down: Training fails: when a feature drift check runs,
+        already when it stores its report; otherwise at the dataset version
+        step. Loading a model for a forecast fails too. Model results, price
+        history and the drift numbers keep working
 -   **DVC (library)**
     -   What it does: Gives each training dataset a version id and keeps a copy
         of it, without Git
@@ -617,8 +621,11 @@ these cases (REQ-MOD-006):
 
 Any other request, including `make train`, always trains. The response says
 whether the security was trained and why
-(`forecasting.train.TrainingDecisionReason`). It gives the feature drift check's
-p-value when a check ran.
+(`forecasting.train.TrainingDecisionReason`). It also carries the field
+`feature_drift_check_status`
+(`forecasting.drift_checks.FeatureDriftCheckStatus`), which is `completed`,
+`skipped: no recorded training` or `skipped: too few reference days`, and the
+field `feature_drift_p_value`, which is null when the check was skipped.
 
 A security's latest training is its newest finished training run, promoted or
 not, that recorded the last day of the prices it used. A run records that day as
@@ -635,23 +642,27 @@ every comparison.
 
 A check yields a p-value, and drift is found when the p-value is at or below
 `drift_p_value_threshold` in `config/drift_checks.toml`. Both checks compare the
-latest `drift_window_days` days with a reference. The reference is all stored
-trading days with a final close up to the last day of the prices the security's
-latest training used.
+values of their window with those of the days before it, the reference.
 
 #### Feature drift check
 
-The feature drift check compares the daily price changes of the latest
-`drift_window_days` stored trading days with a final close with the changes of
-every stored trading day with a final close up to the latest training
-(REQ-MON-001). It tests one column, the daily change, not the model's five
-inputs, which are the same change shifted by a day.
+The feature drift check compares two groups of daily price changes: those of
+the latest `drift_window_days` stored trading days with a final close, its
+window, and those of all earlier stored trading days with a final close
+(REQ-MON-001, `forecasting.drift_checks.check_feature_drift`). It tests one
+column, the daily change, not the model's five inputs, which are the same change
+shifted by a day.
 
 The check runs at the start of every training request for a security that has a
 recorded training, through the API or `make train`. It decides whether a request
 that trains only when needed trains. The training run that follows carries the
-check's run id as the tag `drift_check_run_id`. A drift that persists trains the
-security again on each new trading day; see [Constraints](#constraints).
+check's run id as the tag `drift_check_run_id`. A drift that persists can train
+the security again on many trading days; see [Constraints](#constraints).
+
+When fewer than 20 daily changes lie before the window
+(`forecasting.config.SHORTEST_DRIFT_WINDOW`), the check does not run and records
+nothing (REQ-MON-006). The response then gives `skipped: too few reference days`
+as its `feature_drift_check_status` and null as its `feature_drift_p_value`.
 
 #### Prediction drift check
 
@@ -680,8 +691,11 @@ A due check works in three steps:
 1.  It lets the current production model forecast again from the inputs stored
     with each of them.
 1.  It compares those forecasts with the same model's forecasts for every stored
-    trading day with a final close and complete inputs, up to the latest
-    training.
+    trading day with a final close and complete inputs before the first day of
+    the window. Each forecast is made on the stored day before the day it is
+    for, from that day's five latest daily changes. The reference holds only
+    forecasts made on days before any window forecast. The check reads only the
+    production model, not the latest training's record.
 
 Both sides come from one model, so a switch of the production model is not
 drift. A security without a production model gets an error instead of a check,
@@ -704,6 +718,12 @@ or in `replay-drift-checks` while the replay database exists. A run carries:
 -   the metrics `drift_p_value` and `drift_found` (1 or 0);
 -   the report, attached as JSON always and as HTML only when drift is found,
     because the HTML report is far larger.
+
+`latest_day_checked` is the latest stored trading day with a final close, for
+both checks. `reference_last_day` is the last stored trading day the reference
+covers: for the feature check, the day before the window; for the prediction
+check, the last day the reference's forecasts are for. Both days are written as
+ISO 8601 dates, for example `2026-11-13`.
 
 The system has no Evidently page; the reports are read in MLflow.
 
@@ -1067,9 +1087,10 @@ The design accepts these limits:
     drift in prices and in forecasts but not how well the production model
     forecasts; a model that learned one market phase and fails in the next shows
     only in its scores against the persistence baseline.
--   While the market stays unusual the reference of the feature drift check
-    moves little, so the same drift is found again and the security trains with
-    each new trading day; that persisting signal is meant for a person to read.
+-   A lasting shift in the market is found by most feature drift checks while it
+    lasts, because the reference holds the earlier days; each finding starts a
+    training, so the security can train on many trading days in a row. That
+    persisting signal is meant for a person to read.
 -   No alert sends a notification or starts training; a firing alert is only
     listed in Grafana.
 -   A configured security that was never loaded has no `trading_days_behind`

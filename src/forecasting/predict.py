@@ -26,7 +26,6 @@ from forecasting.trading_calendar import next_trading_day
 from forecasting.train import (
     MISSING_MODEL_ERRORS,
     PRODUCTION_ALIAS,
-    find_latest_training,
     read_final_prices,
     registered_model_name,
 )
@@ -109,7 +108,8 @@ class PredictionDriftCheck:
 
     Attributes:
         check_decision_reason: Why the forecasts are checked or not.
-        prediction_drift_p_value: P-value of the check; None when nothing was checked.
+        prediction_drift_p_value: P-value of the check, 0 to 1; None when nothing was
+            checked.
         prediction_drift_found: True when the p-value is at or below the configured
             threshold; None when nothing was checked.
     """
@@ -185,16 +185,16 @@ def check_forecasts_for_drift(
 ) -> PredictionDriftCheck:
     """Check a security's scheduled forecasts for drift when a check is due; say why.
 
+    @relation(REQ-DAT-003, scope=function)
+    @relation(REQ-MON-002, scope=function)
+
     Nothing is checked while fewer than `drift_window_days` days have a scheduled
     forecast. Otherwise a check is due when the security has no earlier check, or when
     at least `prediction_drift_check_interval_days` stored trading days lie after the
     latest one. The check lets the current production model forecast again from the
     inputs of the latest scheduled forecasts, compares these forecasts with its
-    forecasts for every stored trading day up to the security's latest training, and is
-    recorded in MLflow.
-
-    @relation(REQ-DAT-003, scope=function)
-    @relation(REQ-MON-002, scope=function)
+    forecasts for the stored trading days before the first of them, and is recorded in
+    MLflow.
 
     Args:
         engine: Engine of the project database; while the replay database exists, the
@@ -207,7 +207,6 @@ def check_forecasts_for_drift(
 
     Raises:
         NoProductionModel: if the security has no production model yet.
-        ValueError: if the security has a production model but no recorded training.
     """
     with history_database(engine, settings) as (database, replaying):
         _, model = _production_model(settings, symbol, replaying)
@@ -222,13 +221,8 @@ def check_forecasts_for_drift(
             prediction_drift_p_value=None,
             prediction_drift_found=None,
         )
-    prices_until = find_latest_training(settings, symbol, replaying)
-    # Training registers every production model from a completed run; a model registered
-    # by hand may have none.
-    if prices_until is None:
-        raise ValueError(f"{symbol} has a production model but no recorded training")
     drift = check_prediction_drift(
-        settings, symbol, model, prices, scheduled_forecasts, prices_until, replaying
+        settings, symbol, model, prices, scheduled_forecasts, replaying
     )
 
     return PredictionDriftCheck(

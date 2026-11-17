@@ -92,11 +92,11 @@ reset:
 
 # Trains a model for each configured security on its final closes, holding back the
 # latest evaluation_days of config/training.toml for scoring; before training a security
-# with a recorded training, records a feature drift check in MLflow; records the run and
-# registers the model in MLflow, promotes it if it is the first or beats the production
-# model, and prints its scores next to both baselines. A security that fails does not
-# stop the others: at the end the command fails and names each failed security with its
-# reason.
+# with a recorded training, records a feature drift check in MLflow (unless too few days
+# lie before its window); records the run and registers the model in MLflow, promotes it
+# if it is the first or beats the production model, and prints its scores next to both
+# baselines. A security that fails does not stop the others: at the end the command
+# fails and names each failed security with its reason.
 train:
 	$(COMMAND_ENV) train
 

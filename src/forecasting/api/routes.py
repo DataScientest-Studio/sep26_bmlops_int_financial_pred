@@ -94,6 +94,7 @@ def training_endpoint(
             symbol=request.symbol,
             trained=False,
             training_decision_reason=decision.training_decision_reason,
+            feature_drift_check_status=decision.feature_drift_check_status,
             feature_drift_p_value=decision.feature_drift_p_value,
         )
     result = train(engine, settings, request.symbol, decision.drift_check_run_id)
@@ -102,6 +103,7 @@ def training_endpoint(
         symbol=result.symbol,
         trained=True,
         training_decision_reason=decision.training_decision_reason,
+        feature_drift_check_status=decision.feature_drift_check_status,
         feature_drift_p_value=decision.feature_drift_p_value,
         model_version=result.model_version,
         promoted=result.promoted,

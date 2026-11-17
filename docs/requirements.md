@@ -429,11 +429,11 @@ naming each failed security with its reason.
 **Tags**: phase-3 \
 **VERIFICATION**: Test
 
-**Statement**: Every training of a security that has a recorded training
-compares the daily price changes of the latest configured number of stored
-trading days with those of all stored trading days up to its latest training,
-and records the drift report and its p-value. Drift is found when the p-value is
-at or below the configured value.
+**Statement**: Every training request for a security that has a recorded
+training compares the daily price changes of the latest configured number of
+stored trading days, its window, with those of all earlier stored trading
+days, and records the drift report and its p-value, except as REQ-MON-006
+states. Drift is found when the p-value is at or below the configured value.
 
 ### Prediction drift
 
@@ -444,14 +444,14 @@ at or below the configured value.
 
 **Statement**: A drift check of a security's scheduled forecasts runs when the
 security has no earlier such check or when at least the configured number of
-trading days have been stored since its latest one. It takes, for each of the
-latest configured number of days with a scheduled forecast, that day's last one,
-has the production model forecast again from its stored inputs, and compares the
-results with that model's forecasts for all stored trading days up to the
-security's latest training. It records the drift report and its p-value and
-answers whether drift is found (as REQ-MON-001 defines it). A security with
-fewer days that have a scheduled forecast is not checked, and the answer says
-why.
+trading days have been stored since its latest one. The check takes the last
+scheduled forecast of each of the latest configured number of days that have
+one. The production model forecasts those days again from the inputs stored with
+them. The check compares these forecasts with that model's forecasts for the
+stored trading days before the earliest of those days. It records the drift
+report and its p-value and answers whether drift is found (as REQ-MON-001
+defines it). A security with fewer days that have a scheduled forecast is not
+checked, and the answer says why.
 
 ### Service metrics and dashboard
 
@@ -484,6 +484,17 @@ configured threshold.
 
 **Statement**: An alert configured to start training starts the training
 pipeline.
+
+### Too short a reference
+
+**UID**: REQ-MON-006 \
+**Status**: Draft \
+**Tags**: phase-3 \
+**VERIFICATION**: Test
+
+**Statement**: When the stored trading days before the window of the feature
+drift check (REQ-MON-001) give fewer than 20 daily price changes, the check does
+not run, records nothing, and the response to the training request says why.
 
 ## Web app
 

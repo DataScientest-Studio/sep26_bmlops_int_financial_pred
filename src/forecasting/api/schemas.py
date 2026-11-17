@@ -5,7 +5,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field
 
-from forecasting.drift_checks import PredictionDriftCheckReason
+from forecasting.drift_checks import FeatureDriftCheckStatus, PredictionDriftCheckReason
 from forecasting.train import TrainingDecisionReason
 
 
@@ -76,7 +76,7 @@ class ForecastResponse(BaseModel):
 class TrainingResponse(BaseModel):
     """Outcome of a training request; the model fields are null when nothing trained.
 
-    @relation(REQ-SVC-002, REQ-MOD-006, scope=class)
+    @relation(REQ-SVC-002, REQ-MOD-006, REQ-MON-006, scope=class)
     """
 
     symbol: str
@@ -85,12 +85,17 @@ class TrainingResponse(BaseModel):
         TrainingDecisionReason,
         Field(description="Why the security was trained or not."),
     ]
+    feature_drift_check_status: Annotated[
+        FeatureDriftCheckStatus,
+        Field(description="Whether the feature drift check ran, and if not, why."),
+    ]
     feature_drift_p_value: Annotated[
         float | None,
         Field(
             description=(
-                "P-value of the feature drift check; null when the security has no"
-                " recorded training."
+                "P-value of the feature drift check; null when the check did not run:"
+                " the security has no recorded training, or too few daily changes are"
+                " stored before the check's window."
             )
         ),
     ]

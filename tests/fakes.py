@@ -17,6 +17,8 @@ FETCHED_AT = datetime.fromisoformat("2026-01-02T12:00:00+00:00")
 # Ten daily changes that sum to 0, and the same changes ten times as large.
 CALM = (0.01, -0.01, 0.005, -0.005, 0.02, -0.02, 0.0, 0.015, -0.015, 0.0)
 VOLATILE = tuple(change * 10 for change in CALM)
+# Ten distinct daily changes from 0.05 to 0.14, all far above the calm ones.
+ELEVATED = (0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12, 0.13, 0.14)
 
 
 def price_history(exchange: str, start: str, end: str, seed: int) -> pd.DataFrame:

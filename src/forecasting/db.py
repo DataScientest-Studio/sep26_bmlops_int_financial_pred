@@ -30,7 +30,7 @@ READ_LATEST_LOADS = text("SELECT symbol, fetched_at FROM loads")
 # DISTINCT ON (day) keeps the first row of each day in the order given: the latest
 # request of that day.
 READ_SCHEDULED_FORECASTS = text(
-    "SELECT DISTINCT ON (day) change_1, change_2, change_3, change_4, change_5"
+    "SELECT DISTINCT ON (day) day, change_1, change_2, change_3, change_4, change_5"
     " FROM predictions WHERE symbol = :symbol AND scheduled"
     " ORDER BY day, requested_at DESC"
 )
@@ -164,7 +164,7 @@ def read_splits(engine: Engine, symbol: str) -> pd.DataFrame:
 
 
 def read_scheduled_forecasts(engine: Engine, symbol: str) -> pd.DataFrame:
-    """Read the inputs of the latest scheduled forecast of each day, oldest first.
+    """Read the day and inputs of the latest scheduled forecast of each day.
 
     @relation(REQ-MON-002, scope=function)
 
@@ -173,8 +173,8 @@ def read_scheduled_forecasts(engine: Engine, symbol: str) -> pd.DataFrame:
         symbol: Ticker of the security.
 
     Returns:
-        One row per day a scheduled forecast is for, oldest first, with the columns
-        `change_1` to `change_5`.
+        One row per day a scheduled forecast is for, oldest first, with the
+        columns `day` (a `datetime.date`) and `change_1` to `change_5` (floats).
     """
     params = {"symbol": symbol}
     with engine.connect() as connection:

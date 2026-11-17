@@ -123,6 +123,7 @@ def test_drift_is_found_and_recorded_when_the_latest_forecasts_shift(
         runs[0].data.metrics["drift_p_value"]
         == response.json()["prediction_drift_p_value"]
     )
+    assert runs[0].data.params["reference_last_day"] == "2025-02-03"
     mlflow_client = MlflowClient(tracking_uri=settings.mlflow_tracking_uri)
     report = mlflow_client.download_artifacts(
         runs[0].info.run_id, "drift_report.json", str(tmp_path)

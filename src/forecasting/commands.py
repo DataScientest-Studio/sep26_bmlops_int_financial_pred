@@ -145,8 +145,8 @@ def _for_each_security(settings: Settings, action: Callable[[str], None]) -> Non
 
 def _train_security(engine: Engine, settings: Settings, symbol: str) -> None:
     """Train and register a model for one security and print its scores."""
-    # Training always runs here; decide_training first runs the feature drift check, and
-    # the training run records that check's run id.
+    # Training always runs here; where decide_training runs the feature drift check, the
+    # training run records that check's run id.
     decision = decide_training(engine, settings, symbol, only_when_needed=False)
     result = train(engine, settings, symbol, decision.drift_check_run_id)
     scores = result.evaluation

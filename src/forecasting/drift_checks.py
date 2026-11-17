@@ -12,7 +12,7 @@ from evidently.core.report import Snapshot
 from evidently.metrics import ValueDrift
 from mlflow import MlflowClient
 
-from forecasting.config import Settings
+from forecasting.config import SHORTEST_DRIFT_WINDOW, Settings
 from forecasting.features import build_features
 from forecasting.replay import REPLAY_PREFIX
 
@@ -25,14 +25,47 @@ LATEST_DAY_CHECKED = "latest_day_checked"
 
 
 class DriftKind(StrEnum):
-    """Which values a drift check compares: daily changes or forecasts."""
+    """Which values a drift check compares: daily changes or forecasts.
+
+    Attributes:
+        FEATURE: The daily price changes.
+        PREDICTION: The model's forecasts.
+    """
 
     FEATURE = "feature"
     PREDICTION = "prediction"
 
 
+class FeatureDriftCheckStatus(StrEnum):
+    """Whether the feature drift check of a training request ran, and if not, why.
+
+    @relation(REQ-MON-001, scope=class)
+    @relation(REQ-MON-006, scope=class)
+
+    Attributes:
+        COMPLETED: The check ran and was recorded in MLflow.
+        SKIPPED_NO_RECORDED_TRAINING: The security has no recorded training.
+        SKIPPED_TOO_FEW_REFERENCE_DAYS: Fewer than `SHORTEST_DRIFT_WINDOW` daily
+            changes are stored before the check's window.
+    """
+
+    COMPLETED = "completed"
+    SKIPPED_NO_RECORDED_TRAINING = "skipped: no recorded training"
+    SKIPPED_TOO_FEW_REFERENCE_DAYS = "skipped: too few reference days"
+
+
 class PredictionDriftCheckReason(StrEnum):
-    """Why a prediction drift check of a security runs, or why not."""
+    """Why a prediction drift check of a security runs, or why not.
+
+    @relation(REQ-MON-002, scope=class)
+
+    Attributes:
+        NO_EARLIER_CHECK: The security has no earlier prediction drift check.
+        CHECK_INTERVAL_REACHED: Enough stored trading days lie after the latest check.
+        NOT_DUE: The latest check is too recent.
+        TOO_FEW_SCHEDULED_FORECASTS: Fewer days than `drift_window_days` have a
+            scheduled forecast.
+    """
 
     NO_EARLIER_CHECK = "no earlier check"
     CHECK_INTERVAL_REACHED = "check interval reached"
@@ -41,7 +74,11 @@ class PredictionDriftCheckReason(StrEnum):
 
     @property
     def check_runs(self) -> bool:
-        """Tell whether the check runs for this reason."""
+        """Tell whether the check runs for this reason.
+
+        Returns:
+            True when the check runs for this reason.
+        """
         return self in {
             PredictionDriftCheckReason.NO_EARLIER_CHECK,
             PredictionDriftCheckReason.CHECK_INTERVAL_REACHED,
@@ -53,9 +90,9 @@ class DriftTestResult:
     """Outcome of one drift test.
 
     Attributes:
-        p_value: P-value of the two-sample Kolmogorov-Smirnov test: the smaller it is,
-            the stronger the evidence that the recent and the reference values come
-            from different distributions.
+        p_value: P-value of the two-sample Kolmogorov-Smirnov test, 0 to 1: the smaller
+            it is, the stronger the evidence that the recent and the reference values
+            come from different distributions.
         drift_found: True when `p_value` is at or below the threshold.
         report: Evidently's report of the test, to store as JSON or HTML.
     """
@@ -78,10 +115,11 @@ def run_drift_test(
 
     Args:
         reference: Values of the reference period, for example the daily changes of
-            every stored trading day up to a security's latest training.
+            every stored trading day before the recent ones.
         recent: Values of the latest days, of the same kind as `reference`.
         values_name: Name of the values in the report, for example "daily_change".
-        p_value_threshold: Drift is found when the p-value is at or below it.
+        p_value_threshold: Drift is found when the p-value is at or below it, 0.001 to
+            0.1.
 
     Returns:
         The p-value, whether drift is found, and the report.
@@ -108,7 +146,7 @@ class DriftCheckResult:
 
     Attributes:
         run_id: Id of the check's run in MLflow.
-        p_value: P-value of the check's drift test.
+        p_value: P-value of the check's drift test, 0 to 1.
         drift_found: True when `p_value` is at or below the configured threshold.
     """
 
@@ -121,6 +159,13 @@ def drift_checks_experiment_name(replaying: bool) -> str:
     """Return the name of the MLflow experiment drift checks are recorded in.
 
     @relation(REQ-DAT-003, scope=function)
+
+    Args:
+        replaying: Whether the replay database exists; replay checks are recorded in
+            their own experiment.
+
+    Returns:
+        The experiment's name.
     """
     prefix = REPLAY_PREFIX if replaying else ""
 
@@ -131,49 +176,56 @@ def check_feature_drift(
     settings: Settings,
     symbol: str,
     prices: pd.DataFrame,
-    prices_until: date,
     replaying: bool,
-) -> DriftCheckResult:
-    """Test whether a security's latest daily changes drifted since its latest training.
-
-    The daily changes of the latest `drift_window_days` stored trading days are compared
-    with the daily changes of every day up to `prices_until`, the last day of the prices
-    the latest training used. The check is recorded as its own run in MLflow: the report
-    as JSON, and as HTML when drift is found.
+) -> DriftCheckResult | None:
+    """Test whether a security's latest daily changes differ from all earlier ones.
 
     @relation(REQ-MON-001, scope=function)
+    @relation(REQ-MON-006, scope=function)
+
+    The daily changes of the latest `drift_window_days` stored trading days are compared
+    with the daily changes of every stored trading day before them. The check is
+    recorded as its own run in MLflow: the report as JSON, and as HTML when drift is
+    found. Fewer than `SHORTEST_DRIFT_WINDOW` earlier daily changes are too few to test
+    against: then nothing is tested or recorded.
 
     Args:
         settings: Settings of this deployment.
         symbol: Ticker of the security.
         prices: The security's prices with a final close, oldest first, corrected for
             splits.
-        prices_until: Last day of the prices the security's latest training used.
         replaying: Whether the replay database exists; replay checks are recorded in
             their own experiment.
 
     Returns:
-        The id of the check's run, its p-value and whether drift is found.
+        The id of the check's run, its p-value and whether drift is found; None when
+        the check did not run for too few earlier daily changes.
     """
     # pct_change divides each close by the close before it, minus 1: the daily change.
     # The first day has no day before it, so its change is missing.
     daily_changes = prices["close"].pct_change()
-    reference = daily_changes[prices["day"] <= prices_until].dropna()
-    recent = daily_changes.iloc[-settings.drift_window_days :]
+    window_days = settings.drift_window_days
+    reference = daily_changes.iloc[:-window_days].dropna()
+    if len(reference) < SHORTEST_DRIFT_WINDOW:
+        return None
+    recent = daily_changes.iloc[-window_days:]
     test = run_drift_test(
         reference, recent, "daily_change", settings.drift_p_value_threshold
     )
+    # The reference ends on the day before the window starts.
+    reference_last_day = prices["day"].iloc[-window_days - 1]
     latest_day_checked = prices["day"].iloc[-1]
-
-    return _record_drift_check(
+    check = _record_drift_check(
         settings,
         symbol,
         DriftKind.FEATURE,
         test,
         latest_day_checked,
-        prices_until,
+        reference_last_day,
         replaying,
     )
+
+    return check
 
 
 def check_prediction_drift(
@@ -182,17 +234,17 @@ def check_prediction_drift(
     model: Any,
     prices: pd.DataFrame,
     scheduled_forecasts: pd.DataFrame,
-    prices_until: date,
     replaying: bool,
 ) -> DriftCheckResult:
-    """Test whether a model's forecasts drifted since the security's latest training.
-
-    The model forecasts again from the stored inputs of the latest `drift_window_days`
-    scheduled forecasts, and from the inputs of every stored trading day up to
-    `prices_until`; the two sets of forecasts are compared. The check is recorded as its
-    own run in MLflow: the report as JSON, and as HTML when drift is found.
+    """Test whether a model's latest forecasts differ from its earlier ones.
 
     @relation(REQ-MON-002, scope=function)
+
+    The model forecasts again from the stored inputs of the latest `drift_window_days`
+    scheduled forecasts, and from the inputs of every stored trading day with complete
+    inputs before the input day of the first of those forecasts; the two sets of
+    forecasts are compared, so no input day is in both. The check is recorded as its own
+    run in MLflow: the report as JSON, and as HTML when drift is found.
 
     Args:
         settings: Settings of this deployment.
@@ -200,39 +252,45 @@ def check_prediction_drift(
         model: The security's production model.
         prices: The security's prices with a final close, oldest first, corrected for
             splits.
-        scheduled_forecasts: Inputs of the latest scheduled forecast of each day, oldest
-            first, as from `forecasting.db.read_scheduled_forecasts`.
-        prices_until: Last day of the prices the security's latest training used.
+        scheduled_forecasts: Day and inputs of the latest scheduled forecast of each
+            day, oldest first, as from `forecasting.db.read_scheduled_forecasts`.
         replaying: Whether the replay database exists; replay checks are recorded in
             their own experiment.
 
     Returns:
         The id of the check's run, its p-value and whether drift is found.
     """
-    # The reference is the model's forecasts from the inputs of every stored trading day
-    # up to the latest training, built exactly as in training. A row is usable when
-    # every input is present; the first days lack the history for them.
     features = build_features(prices)
-    reference_days = features.notna().all(axis=1) & (prices["day"] <= prices_until)
-    reference = pd.Series(model.predict(features[reference_days]))
     # The recent forecasts come from the same model and the stored inputs of the latest
     # scheduled forecasts, with the columns in the order the model learned them.
     window = scheduled_forecasts.tail(settings.drift_window_days)
     recent = pd.Series(model.predict(window[features.columns]))
+    # A forecast for a day takes the latest stored day before it as input. The
+    # reference is the model's forecasts from the stored days before the window's first
+    # input day, built exactly as in training. A row is usable when every input is
+    # present; the first days lack the history for them.
+    days = prices["day"]
+    first_input_day = days[days < window["day"].iloc[0]].max()
+    reference_days = features.notna().all(axis=1) & (days < first_input_day)
+    reference = pd.Series(model.predict(features[reference_days]))
     test = run_drift_test(
         reference, recent, "forecast", settings.drift_p_value_threshold
     )
-    latest_day_checked = prices["day"].iloc[-1]
-
-    return _record_drift_check(
+    # The reference's last forecast uses the inputs of the stored day before
+    # first_input_day, so it is for first_input_day.
+    reference_last_day = first_input_day
+    latest_day_checked = days.iloc[-1]
+    check = _record_drift_check(
         settings,
         symbol,
         DriftKind.PREDICTION,
         test,
         latest_day_checked,
-        prices_until,
+        reference_last_day,
         replaying,
     )
+
+    return check
 
 
 def find_latest_prediction_drift_check(
@@ -277,10 +335,24 @@ def _record_drift_check(
     drift_kind: DriftKind,
     test: DriftTestResult,
     latest_day_checked: date,
-    prices_until: date,
+    reference_last_day: date,
     replaying: bool,
 ) -> DriftCheckResult:
-    """Record a drift check as its own run in MLflow and return its outcome."""
+    """Record a drift check as its own run in MLflow and return its outcome.
+
+    Args:
+        settings: Settings of this deployment.
+        symbol: Ticker of the security.
+        drift_kind: Which values the check compared.
+        test: Outcome of the check's drift test.
+        latest_day_checked: Latest stored trading day the check saw.
+        reference_last_day: Last stored trading day the reference covers.
+        replaying: Whether the replay database exists; replay checks are recorded in
+            their own experiment.
+
+    Returns:
+        The id of the check's run, its p-value and whether drift is found.
+    """
     mlflow.set_tracking_uri(settings.mlflow_tracking_uri)
     # The experiment is named in start_run, not only set: MLflow keeps the active
     # experiment for the whole process, and the API runs requests in several threads.
@@ -291,7 +363,7 @@ def _record_drift_check(
             {
                 "drift_window_days": settings.drift_window_days,
                 LATEST_DAY_CHECKED: latest_day_checked,
-                "reference_last_day": prices_until,
+                "reference_last_day": reference_last_day,
             }
         )
         mlflow.log_metrics(

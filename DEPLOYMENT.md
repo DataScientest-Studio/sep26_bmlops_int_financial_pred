@@ -159,7 +159,9 @@ fail, naming each failed security ([Invariants](ARCHITECTURE.md#invariants)).
 -   `make train`: trains a model for each configured security on its final
     closes and prints its scores next to both baselines, with whether the model
     was promoted or the production model was kept. For a security that was
-    trained before, it first records a feature drift check in MLflow.
+    trained before, it first records a feature drift check in MLflow, unless
+    fewer than 20 daily changes lie before the check's window ([Feature drift
+    check](ARCHITECTURE.md#feature-drift-check)).
 -   `make predict`: prints the production model's forecast of the next trading
     day for each configured security and stores each forecast in the table
     `predictions`, as the API's `/predict` does.
@@ -235,7 +237,7 @@ the code.
 | `final_delay_minutes` | `config/daily_update.toml` | Whole minutes after an exchange's close from which a fetched close is final, for every load |
 | `evaluation_days` | `config/training.toml` | Latest trading days held back from training to score each model |
 | `retraining_interval_days` | `config/training.toml` | Stored trading days after which a security is trained again |
-| `drift_window_days` | `config/drift_checks.toml` | How many of the latest days a drift check compares with the days up to the latest training: stored trading days for the feature drift check, days with a scheduled forecast for the prediction drift check |
+| `drift_window_days` | `config/drift_checks.toml` | How many of the latest days a drift check looks at: stored trading days for the feature drift check, days with a scheduled forecast for the prediction drift check; each check compares them with the earlier days |
 | `prediction_drift_check_interval_days` | `config/drift_checks.toml` | Stored trading days that must pass after a security's latest prediction drift check before the next is due |
 | `drift_p_value_threshold` | `config/drift_checks.toml` | A drift check finds drift when its p-value is at or below it |
 | `[[securities]]` `symbol`, `exchange` | `config/securities.toml` | The securities to load, train and forecast: ticker as the data source names it, and the MIC of its exchange |
@@ -447,8 +449,8 @@ missed" may fire.
 
 ### When drift is found
 
-Drift means that the latest values differ from the ones the model was trained
-on. How the two checks decide is in [Drift
+Drift means that the latest daily price changes, or the latest forecasts, differ
+in distribution from the earlier ones. How the two checks decide is in [Drift
 detection](ARCHITECTURE.md#drift-detection).
 
 #### What you see
@@ -465,15 +467,17 @@ detection](ARCHITECTURE.md#drift-detection).
 #### What the system does by itself
 
 -   A feature drift check runs before every training of a security that has been
-    trained before. When it finds drift, a training request that trains only
-    when needed trains that security.
+    trained before, unless fewer than 20 daily changes lie before the check's
+    window. When it finds drift, a training request that trains only when
+    needed trains that security.
 -   The `prediction_drift_check` pipeline runs each time the `training` pipeline
     has made its scheduled forecasts. When a check finds drift, it announces it,
     and the `training` pipeline then trains every configured security. The
     promotion rule decides whether each new model becomes the production model;
     see [Better model](ARCHITECTURE.md#better-model).
 -   While the pipelines are paused, the system does none of this by itself.
-    `make train` still runs the feature drift check first.
+    `make train` still runs the feature drift check first, with the same
+    exception.
 
 #### What you can do
 
@@ -499,8 +503,9 @@ detection](ARCHITECTURE.md#drift-detection).
       -d '{"symbol": "<SYMBOL>", "only_when_needed": false}'
     ```
 
-    Every training runs its feature drift check first.
-1.  **Watch for drift that persists.** The security trains again on each new
-    trading day while the drift lasts ([Constraints]). If retraining does not
-    bring the model back near the baselines, the model or its inputs need
-    rethinking, which is a decision for a person.
+    A training of a security that was trained before runs its feature drift
+    check first, with the same exception.
+1.  **Watch for drift that persists.** The security can train again on many
+    trading days in a row while the drift lasts ([Constraints]). If retraining
+    does not bring the model back near the baselines, the model or its inputs
+    need rethinking, which is a decision for a person.

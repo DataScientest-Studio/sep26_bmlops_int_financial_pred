@@ -19,7 +19,7 @@ from sqlalchemy import Engine
 from forecasting.config import Settings
 from forecasting.datasets import dataset_version
 from forecasting.db import read_prices, read_splits
-from forecasting.drift_checks import check_feature_drift
+from forecasting.drift_checks import FeatureDriftCheckStatus, check_feature_drift
 from forecasting.evaluate import Evaluation, evaluate
 from forecasting.features import (
     CHANGE_DAYS,
@@ -87,13 +87,16 @@ class TrainingDecision:
 
     Attributes:
         training_decision_reason: Why the security is trained or not.
-        feature_drift_p_value: P-value of the feature drift check; None when the
-            security has no recorded training to compare with.
+        feature_drift_check_status: Whether the feature drift check ran, and if not,
+            why.
+        feature_drift_p_value: P-value of the feature drift check, 0 to 1; None when
+            the check did not run.
         drift_check_run_id: Id of the drift check's run in MLflow; None when no check
             ran.
     """
 
     training_decision_reason: TrainingDecisionReason
+    feature_drift_check_status: FeatureDriftCheckStatus
     feature_drift_p_value: float | None
     drift_check_run_id: str | None
 
@@ -121,14 +124,15 @@ def decide_training(
 ) -> TrainingDecision:
     """Decide whether a training request trains a security, and say why.
 
-    A security with a recorded training first gets a feature drift check, recorded in
-    MLflow. A request marked only when needed trains the security only when it has no
-    recorded training, when the check finds drift, or when at least
-    `retraining_interval_days` stored trading days lie after its latest training; any
-    other request always trains.
-
     @relation(REQ-MOD-006, scope=function)
     @relation(REQ-MON-001, scope=function)
+    @relation(REQ-MON-006, scope=function)
+
+    A security with a recorded training first gets a feature drift check, recorded in
+    MLflow, unless too few daily changes are stored before the check's window. A
+    request marked only when needed trains the security only when it has no recorded
+    training, when the check finds drift, or when at least `retraining_interval_days`
+    stored trading days lie after its latest training; any other request always trains.
 
     Args:
         engine: Engine of the project database; while the replay database exists,
@@ -138,7 +142,8 @@ def decide_training(
         only_when_needed: Whether the request trains only when needed.
 
     Returns:
-        Whether the security is trained, why, and the drift check's p-value and run.
+        Whether the security is trained and why, whether the feature drift check ran
+        and, if not, why, and the check's p-value and run.
     """
     prices, replaying = read_final_prices(engine, settings, symbol)
     prices_until = find_latest_training(settings, symbol, replaying)
@@ -151,24 +156,37 @@ def decide_training(
 
         return TrainingDecision(
             training_decision_reason=reason,
+            feature_drift_check_status=(
+                FeatureDriftCheckStatus.SKIPPED_NO_RECORDED_TRAINING
+            ),
             feature_drift_p_value=None,
             drift_check_run_id=None,
         )
-    drift = check_feature_drift(settings, symbol, prices, prices_until, replaying)
+    drift = check_feature_drift(settings, symbol, prices, replaying)
     # Comparing the day column with one day gives one True or False per row; sum counts
     # the True rows: the stored final trading days after the latest training's prices.
     days_after_training = int((prices["day"] > prices_until).sum())
     if not only_when_needed:
         reason = TrainingDecisionReason.TRAINING_REQUESTED
-    elif drift.drift_found:
+    elif drift is not None and drift.drift_found:
         reason = TrainingDecisionReason.FEATURE_DRIFT_FOUND
     elif days_after_training >= settings.retraining_interval_days:
         reason = TrainingDecisionReason.RETRAINING_INTERVAL_REACHED
     else:
         reason = TrainingDecisionReason.NOT_NEEDED
+    if drift is None:
+        return TrainingDecision(
+            training_decision_reason=reason,
+            feature_drift_check_status=(
+                FeatureDriftCheckStatus.SKIPPED_TOO_FEW_REFERENCE_DAYS
+            ),
+            feature_drift_p_value=None,
+            drift_check_run_id=None,
+        )
 
     return TrainingDecision(
         training_decision_reason=reason,
+        feature_drift_check_status=FeatureDriftCheckStatus.COMPLETED,
         feature_drift_p_value=drift.p_value,
         drift_check_run_id=drift.run_id,
     )
@@ -319,9 +337,8 @@ def train(
         # failure inside the run marks the run itself as failed in MLflow.
         mlflow.set_tag("promoted", str(promoted).lower())
         # Logged last, so only a completed run records it: a security's latest training
-        # is its latest completed run. Its drift check compares against the daily
-        # changes up to this day, and the retraining interval counts the stored trading
-        # days after it.
+        # is its latest completed run. The retraining interval counts the stored trading
+        # days after this day.
         mlflow.log_param(PRICES_UNTIL, prices["day"].iloc[-1])
 
     # training_samples - 1 is the last training row, training_samples the first
