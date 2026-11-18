@@ -402,9 +402,10 @@ page and the database directly.
 
 ```mermaid
 flowchart LR
-    eodhd["EODHD"] --> load["load: data service, make update"]
-    load --> db[("project database")]
-    db -->|"days up to the replayed day"| replay[("replay database")]
+    eodhd["EODHD"] --> data["load and replay: data service, make update, make replay"]
+    data -->|"loaded days"| db[("project database")]
+    db -->|"stored days"| data
+    data -->|"days up to the replayed day"| replay[("replay database")]
     db --> training["training: API, make train"]
     training -->|"dataset CSV"| dvc["dataset version: DVC"]
     dvc --> store[("object store")]
